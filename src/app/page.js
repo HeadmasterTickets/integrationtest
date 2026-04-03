@@ -1,65 +1,124 @@
-import Image from "next/image";
+import Link from "next/link";
+import {
+  getProductDetails,
+  getProductTypesForProduct,
+} from "@/lib/bemyguest";
+import {
+  normalizeProductTypes,
+  pickProductName,
+} from "@/lib/bemyguest-normalizers";
+import { INTEGRATION_PRODUCTS } from "@/lib/integration-products";
 import styles from "./page.module.css";
 
-export default function Home() {
+async function getProductCardData(product) {
+  try {
+    const [productPayload, productTypesPayload] = await Promise.all([
+      getProductDetails(product.productUuid),
+      getProductTypesForProduct(product.productUuid),
+    ]);
+    const variants = normalizeProductTypes(productTypesPayload);
+    const expectedVariantExists = variants.some(
+      (variant) => variant.uuid === product.productTypeUuid,
+    );
+
+    return {
+      ...product,
+      dynamicName: pickProductName(productPayload),
+      variants,
+      expectedVariantExists,
+      errorMessage: null,
+    };
+  } catch (error) {
+    return {
+      ...product,
+      dynamicName: "Unable to load product",
+      variants: [],
+      expectedVariantExists: false,
+      errorMessage: error instanceof Error ? error.message : "Unknown API error",
+    };
+  }
+}
+
+export default async function Home() {
+  const productCards = await Promise.all(
+    INTEGRATION_PRODUCTS.map((product) => getProductCardData(product)),
+  );
+
   return (
     <div className={styles.page}>
       <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.js file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+        <section className={styles.hero}>
+          <p className={styles.kicker}>BeMyGuest Demo Integration</p>
+          <h1>Find and preview ticket products</h1>
+          <p className={styles.heroText}>
+            This storefront pulls live product names and variants directly from
+            BeMyGuest. Update a UUID and the displayed content updates
+            automatically.
           </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+        </section>
+
+        <section className={styles.products}>
+          {productCards.map((product) => (
+            <article key={product.productUuid} className={styles.card}>
+              <header className={styles.cardHeader}>
+                <span className={styles.productChip}>{product.id}</span>
+                <h2>{product.dynamicName}</h2>
+              </header>
+
+              <div className={styles.detailGrid}>
+                <p>
+                  <strong>Product UUID</strong>
+                  <span>{product.productUuid}</span>
+                </p>
+                <p>
+                  <strong>Primary Product-Type UUID</strong>
+                  <span>{product.productTypeUuid}</span>
+                </p>
+                <p>
+                  <strong>Primary Variant Found</strong>
+                  <span>{product.expectedVariantExists ? "Yes" : "No"}</span>
+                </p>
+              </div>
+
+              <div className={styles.variants}>
+                <strong>Variants (Product Types)</strong>
+                {product.variants.length > 0 ? (
+                  <ul className={styles.variantList}>
+                    {product.variants.map((variant) => (
+                      <li key={variant.uuid}>
+                        <span className={styles.variantName}>{variant.name}</span>
+                        <span className={styles.variantUuid}>{variant.uuid}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className={styles.noVariants}>No variants returned.</span>
+                )}
+              </div>
+
+              {product.errorMessage && (
+                <p className={styles.errorText}>
+                  API error: {product.errorMessage}
+                </p>
+              )}
+
+              <footer className={styles.cardFooter}>
+                <span className={styles.variantCount}>
+                  {product.variants.length} variants
+                </span>
+                {product.href ? (
+                  <Link href={product.href} className={styles.button}>
+                    View Ticket
+                  </Link>
+                ) : (
+                  <button type="button" className={styles.button} disabled>
+                    Coming Soon
+                  </button>
+                )}
+              </footer>
+            </article>
+          ))}
+        </section>
       </main>
     </div>
   );

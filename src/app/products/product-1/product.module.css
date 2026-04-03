@@ -1,0 +1,197 @@
+.page {
+  min-height: 100svh;
+  background:
+    radial-gradient(circle at 10% 2%, #dbeafe 0%, transparent 35%),
+    radial-gradient(circle at 90% 0%, #e0e7ff 0%, transparent 40%),
+    #f8fafc;
+  padding: 26px 16px 34px;
+}
+
+.card {
+  max-width: 1120px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 18px;
+  border: 1px solid #dbe4f4;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
+  padding: 28px;
+}
+
+.header {
+  border-bottom: 1px dashed #dbe4f4;
+  padding-bottom: 14px;
+}
+
+.kicker {
+  display: inline-flex;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.card h1 {
+  color: #0f172a;
+  font-size: 2rem;
+  margin-top: 10px;
+}
+
+.subtitle {
+  color: #475569;
+  margin-top: 10px;
+  line-height: 1.6;
+}
+
+.meta {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.meta p {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.meta strong {
+  color: #475569;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.meta span {
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  word-break: break-all;
+  font-size: 0.84rem;
+}
+
+.successBox,
+.errorBox {
+  margin-top: 18px;
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.successBox {
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+}
+
+.errorBox {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+}
+
+.successBox h2,
+.errorBox h2 {
+  font-size: 1rem;
+  color: #1d2a44;
+}
+
+.typesSection {
+  margin-top: 22px;
+}
+
+.typesSection h2 {
+  color: #0f172a;
+}
+
+.typeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.typeCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px;
+  background: #f8fafc;
+}
+
+.typeCard h3 {
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+
+.typeCard p {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.selectorRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field span {
+  font-size: 0.85rem;
+  color: #3f4f70;
+}
+
+.field input {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  color: #0f1a32;
+  background: #fff;
+}
+
+.emptyText {
+  margin-top: 10px;
+  color: #4e5d78;
+}
+
+.footer {
+  margin-top: 20px;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  border: 1px solid #1e40af;
+  padding: 10px 16px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .card {
+    padding: 20px;
+  }
+
+  .card h1 {
+    font-size: 1.6rem;
+  }
+
+  .selectorRow {
+    grid-template-columns: 1fr;
+  }
+}
