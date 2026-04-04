@@ -26,7 +26,9 @@ function addDays(dateString, days) {
 }
 
 function buildAvailabilityRangesForYear() {
-  const today = new Date().toISOString().slice(0, 10);
+  // BeMyGuest validates date_start against its timezone and can reject "today".
+  // Start from tomorrow to avoid cross-timezone off-by-one validation errors.
+  const today = addDays(new Date().toISOString().slice(0, 10), 1);
   // API calendar range is capped at 6 months; split into two safe windows.
   return [
     {
@@ -109,12 +111,19 @@ export default async function ProductPage({ params }) {
       productTypes.map(async (type) => {
         try {
           const rangePayloads = await Promise.all(
-            ranges.map((range) =>
-              getPriceListCalendar(type.uuid, range.dateStart, range.dateEnd),
-            ),
+            ranges.map(async (range) => {
+              try {
+                return await getPriceListCalendar(type.uuid, range.dateStart, range.dateEnd);
+              } catch {
+                // Keep partial availability if one range fails.
+                return null;
+              }
+            }),
           );
           const mergedDays = mergeAvailabilityDays(
-            rangePayloads.flatMap((payload) => normalizeAvailabilityCalendar(payload)),
+            rangePayloads
+              .filter(Boolean)
+              .flatMap((payload) => normalizeAvailabilityCalendar(payload)),
           );
           return [
             type.uuid,
