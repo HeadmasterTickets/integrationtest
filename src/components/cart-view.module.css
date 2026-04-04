@@ -63,6 +63,21 @@
   padding: 8px 10px;
 }
 
+.breakdown {
+  margin-top: 8px;
+  margin-left: 16px;
+  color: #334155;
+  font-size: 0.85rem;
+  display: grid;
+  gap: 4px;
+}
+
+.hint {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
 .actions {
   margin-top: 14px;
   display: flex;

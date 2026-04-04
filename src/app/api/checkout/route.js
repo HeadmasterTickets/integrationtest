@@ -47,9 +47,18 @@ function buildCartLines(items, priceMap) {
       productTypeName: item.productTypeName,
       quantity: item.quantity,
       travelDate: item.travelDate || "",
+      ticketBreakdown: item.ticketBreakdown || [],
       stripe_catalog_price_id: priceMap[key] || "",
     };
   });
+}
+
+function getTicketCountByCategory(ticketBreakdown, category) {
+  if (!Array.isArray(ticketBreakdown)) return 0;
+  return ticketBreakdown.reduce((sum, entry) => {
+    if (String(entry?.category || "").toLowerCase() !== category) return sum;
+    return sum + (Math.max(0, Number(entry?.quantity) || 0));
+  }, 0);
 }
 
 function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
@@ -67,10 +76,18 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const pax = body?.pax || {};
   const environment = body?.environment || "demo";
 
-  const adults = asNumber(pax.adults, primary.quantity);
-  const children = asNumber(pax.children, 0);
-  const infants = asNumber(pax.infants, 0);
-  const seniors = asNumber(pax.seniors, 0);
+  const adultsFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "adult");
+  const childrenFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "child");
+  const infantsFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "infant");
+  const seniorsFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "senior");
+
+  const adults = asNumber(
+    pax.adults,
+    adultsFromTickets > 0 ? adultsFromTickets : primary.quantity,
+  );
+  const children = asNumber(pax.children, childrenFromTickets);
+  const infants = asNumber(pax.infants, infantsFromTickets);
+  const seniors = asNumber(pax.seniors, seniorsFromTickets);
   const totalPax = adults + children + infants + seniors;
 
   // Field order matches integration contract / Stripe payload JSON schema.
@@ -188,16 +205,31 @@ function createStripeMetadata(schemaPayload) {
 function normalizeItems(items) {
   if (!Array.isArray(items)) return [];
   return items
-    .map((item) => ({
-      productUuid: item?.productUuid,
-      productTypeUuid: item?.productTypeUuid,
-      quantity: Math.max(1, Number(item?.quantity) || 1),
-      productName: item?.productName || "Ticket product",
-      productTypeName: item?.productTypeName || "Variant",
-      travelDate: item?.travelDate || "",
-      timeslotUuid: item?.timeslotUuid || "",
-      timeslotTime: item?.timeslotTime || "",
-    }))
+    .map((item) => {
+      const ticketBreakdown = Array.isArray(item?.ticketBreakdown)
+        ? item.ticketBreakdown
+            .map((entry) => ({
+              category: String(entry?.category || "").toLowerCase(),
+              label: entry?.label || "",
+              quantity: Math.max(0, Number(entry?.quantity) || 0),
+            }))
+            .filter((entry) => entry.category && entry.quantity > 0)
+        : [];
+      const breakdownTotal = ticketBreakdown.reduce((sum, entry) => sum + entry.quantity, 0);
+
+      return {
+        ticketBreakdown,
+        productUuid: item?.productUuid,
+        productTypeUuid: item?.productTypeUuid,
+        quantity:
+          breakdownTotal > 0 ? breakdownTotal : Math.max(1, Number(item?.quantity) || 1),
+        productName: item?.productName || "Ticket product",
+        productTypeName: item?.productTypeName || "Variant",
+        travelDate: item?.travelDate || "",
+        timeslotUuid: item?.timeslotUuid || "",
+        timeslotTime: item?.timeslotTime || "",
+      };
+    })
     .filter((item) => item.productUuid && item.productTypeUuid);
 }
 

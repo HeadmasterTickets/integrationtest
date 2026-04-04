@@ -19,14 +19,9 @@ export default function SiteShell() {
   return (
     <>
       <header className={styles.header}>
-        <div className={styles.left}>
-          <Link href="/" className={styles.logo}>
-            TicketFlow
-          </Link>
-          <nav className={styles.nav}>
-            <Link href="/integration-test">Integration Tasks</Link>
-          </nav>
-        </div>
+        <Link href="/" className={styles.logo}>
+          TicketFlow
+        </Link>
         <CartPill />
       </header>
     </>

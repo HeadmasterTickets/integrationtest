@@ -11,28 +11,10 @@
   border-bottom: 1px solid #e2e8f0;
 }
 
-.left {
-  display: inline-flex;
-  align-items: center;
-  gap: 14px;
-}
-
 .logo {
   font-size: 1.02rem;
   font-weight: 700;
   color: #0f172a;
-}
-
-.nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.nav a {
-  font-size: 0.9rem;
-  color: #334155;
-  font-weight: 600;
 }
 
 .cartPill {

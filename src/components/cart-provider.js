@@ -5,9 +5,39 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 const CART_STORAGE_KEY = "integration_cart_v1";
 
 const CartContext = createContext(null);
+const FALLBACK_CART_CONTEXT = {
+  items: [],
+  totalQuantity: 0,
+  isAvailable: false,
+  addItem: () => {},
+  updateQuantity: () => {},
+  removeItem: () => {},
+  clearCart: () => {},
+};
 
 function getItemKey(item) {
-  return `${item.productUuid}:${item.productTypeUuid}:${item.travelDate || ""}`;
+  return `${item.productUuid}:${item.productTypeUuid}:${item.travelDate || ""}:${item.timeslotUuid || ""}`;
+}
+
+function normalizeTicketBreakdown(entries) {
+  if (!Array.isArray(entries)) return [];
+  const byCategory = new Map();
+  for (const entry of entries) {
+    const category = String(entry?.category || "general").toLowerCase();
+    const quantity = Math.max(0, Number(entry?.quantity) || 0);
+    if (quantity <= 0) continue;
+    const existing = byCategory.get(category);
+    if (existing) {
+      existing.quantity += quantity;
+      continue;
+    }
+    byCategory.set(category, {
+      category,
+      label: entry?.label || category,
+      quantity,
+    });
+  }
+  return Array.from(byCategory.values());
 }
 
 export function CartProvider({ children }) {
@@ -38,9 +68,14 @@ export function CartProvider({ children }) {
           return [...prev, payload];
         }
         const next = [...prev];
+        const mergedBreakdown = normalizeTicketBreakdown([
+          ...(next[idx].ticketBreakdown || []),
+          ...(payload.ticketBreakdown || []),
+        ]);
         next[idx] = {
           ...next[idx],
           quantity: next[idx].quantity + payload.quantity,
+          ticketBreakdown: mergedBreakdown,
         };
         return next;
       });
@@ -66,6 +101,7 @@ export function CartProvider({ children }) {
     return {
       items,
       totalQuantity,
+      isAvailable: true,
       addItem,
       updateQuantity,
       removeItem,
@@ -78,8 +114,5 @@ export function CartProvider({ children }) {
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) {
-    throw new Error("useCart must be used within CartProvider.");
-  }
-  return context;
+  return context || FALLBACK_CART_CONTEXT;
 }

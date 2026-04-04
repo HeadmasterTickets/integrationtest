@@ -11,7 +11,7 @@ export default function AddToCartCard({
   productTypeName,
   availabilityDays = [],
 }) {
-  const { addItem } = useCart();
+  const { addItem, isAvailable } = useCart();
   const sortedAvailabilityDaysRaw = useMemo(
     () => [...availabilityDays].sort((a, b) => String(a.date).localeCompare(String(b.date))),
     [availabilityDays],
@@ -25,7 +25,10 @@ export default function AddToCartCard({
             (slot) => (Number(slot?.availableQuantity) || 0) > 0,
           ),
         }))
-        .filter((day) => day.timeslots.length > 0),
+        .filter(
+          (day) =>
+            day.timeslots.length > 0 || (Number(day.availableQuantity) || 0) > 0,
+        ),
     [sortedAvailabilityDaysRaw],
   );
   const hasAvailability = sortedAvailabilityDays.length > 0;
@@ -52,7 +55,7 @@ export default function AddToCartCard({
       ? sortedAvailabilityDays[0].timeslots[0].uuid
       : "",
   );
-  const [quantity, setQuantity] = useState(1);
+  const [categorySelections, setCategorySelections] = useState({});
   const [added, setAdded] = useState(false);
 
   const selectedAvailabilityDay = useMemo(() => {
@@ -73,6 +76,58 @@ export default function AddToCartCard({
     );
   }, [selectedAvailabilityDay, timeslotUuid]);
 
+  const activeCategoryAvailability = useMemo(() => {
+    const fromTimeslot = selectedTimeslot?.categoryAvailability || [];
+    const fromDay = selectedAvailabilityDay?.categoryAvailability || [];
+    const categories = fromTimeslot.length > 0 ? fromTimeslot : fromDay;
+    if (categories.length > 0) return categories;
+
+    const fallbackAvailableQuantity = Number(
+      selectedTimeslot?.availableQuantity ?? selectedAvailabilityDay?.availableQuantity ?? 0,
+    );
+    if (fallbackAvailableQuantity <= 0) return [];
+
+    return [
+      {
+        category: "general",
+        label: "General",
+        availableQuantity: fallbackAvailableQuantity,
+      },
+    ];
+  }, [selectedAvailabilityDay, selectedTimeslot]);
+
+  const categoryQuantities = useMemo(() => {
+    if (activeCategoryAvailability.length === 0) return {};
+
+    const next = {};
+    let selectedTotal = 0;
+    for (const category of activeCategoryAvailability) {
+      const code = category.category;
+      const limit = Number(category.availableQuantity) || 0;
+      const requested = Number(categorySelections[code]) || 0;
+      const clamped = Math.max(0, Math.min(limit, requested));
+      next[code] = clamped;
+      selectedTotal += clamped;
+    }
+
+    if (selectedTotal === 0) {
+      const first = activeCategoryAvailability[0];
+      const firstLimit = Number(first.availableQuantity) || 0;
+      next[first.category] = Math.max(0, Math.min(1, firstLimit));
+    }
+
+    return next;
+  }, [activeCategoryAvailability, categorySelections]);
+
+  const totalSelectedQuantity = useMemo(
+    () =>
+      activeCategoryAvailability.reduce((sum, category) => {
+        const code = category.category;
+        return sum + (Number(categoryQuantities[code]) || 0);
+      }, 0),
+    [activeCategoryAvailability, categoryQuantities],
+  );
+
   const monthDays = useMemo(() => {
     if (!selectedMonth) return [];
     return sortedAvailabilityDays.filter((day) => day.date.startsWith(selectedMonth));
@@ -88,7 +143,7 @@ export default function AddToCartCard({
   function onDateChange(nextDate) {
     setTravelDate(nextDate);
     setSelectedMonth(nextDate.slice(0, 7));
-    if (!hasAvailability) return;
+    if (!hasAvailability || !isAvailable) return;
     const day = sortedAvailabilityDays.find((entry) => entry.date === nextDate);
     setTimeslotUuid(day?.timeslots?.[0]?.uuid || "");
   }
@@ -110,7 +165,18 @@ export default function AddToCartCard({
   }
 
   function onAdd() {
-    if (!hasAvailability) return;
+    if (!hasAvailability || totalSelectedQuantity <= 0) return;
+    const ticketBreakdown = activeCategoryAvailability
+      .map((category) => {
+        const quantity = Number(categoryQuantities[category.category]) || 0;
+        return {
+          category: category.category,
+          label: category.label,
+          quantity,
+        };
+      })
+      .filter((entry) => entry.quantity > 0);
+
     addItem({
       productUuid,
       productName,
@@ -119,7 +185,8 @@ export default function AddToCartCard({
       travelDate: travelDate || firstAvailableDate,
       timeslotUuid: selectedTimeslot?.uuid || "",
       timeslotTime: selectedTimeslot?.label || "",
-      quantity: Number(quantity),
+      quantity: totalSelectedQuantity,
+      ticketBreakdown,
     });
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1200);
@@ -176,6 +243,11 @@ export default function AddToCartCard({
           No available dates/timeslots in the loaded availability window.
         </p>
       )}
+      {!isAvailable && (
+        <p className={styles.unavailableText}>
+          Cart is not ready yet. Please refresh this page.
+        </p>
+      )}
 
       <div className={styles.selectorRow}>
         <label className={styles.field}>
@@ -190,15 +262,10 @@ export default function AddToCartCard({
             />
           )}
         </label>
-        <label className={styles.field}>
-          <span>Quantity</span>
-          <input
-            type="number"
-            min="1"
-            value={quantity}
-            onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))}
-          />
-        </label>
+        <div className={styles.field}>
+          <span>Total Quantity</span>
+          <input type="number" min="0" value={totalSelectedQuantity} readOnly />
+        </div>
       </div>
       {selectedAvailabilityDay && selectedAvailabilityDay.timeslots.length > 0 && (
         <div className={styles.selectorRow}>
@@ -225,11 +292,60 @@ export default function AddToCartCard({
           </div>
         </div>
       )}
+      {selectedAvailabilityDay && selectedAvailabilityDay.timeslots.length === 0 && (
+        <div className={styles.selectorRow}>
+          <div className={styles.field}>
+            <span>Availability Type</span>
+            <input type="text" readOnly value="Date-based (no timeslots)" />
+          </div>
+          <div className={styles.field}>
+            <span>Available Quantity</span>
+            <input
+              type="text"
+              readOnly
+              value={Number(selectedAvailabilityDay.availableQuantity) || "N/A"}
+            />
+          </div>
+        </div>
+      )}
+      {activeCategoryAvailability.length > 0 && (
+        <section className={styles.ticketMix}>
+          <p className={styles.ticketMixTitle}>Ticket Types</p>
+          <div className={styles.ticketMixGrid}>
+            {activeCategoryAvailability.map((category) => (
+              <label key={category.category} className={styles.ticketMixRow}>
+                <span>
+                  {category.label} (max {category.availableQuantity})
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max={String(category.availableQuantity)}
+                  value={categoryQuantities[category.category] ?? 0}
+                  onChange={(event) => {
+                    const nextValue = Math.max(
+                      0,
+                      Math.min(
+                        Number(category.availableQuantity) || 0,
+                        Number(event.target.value) || 0,
+                      ),
+                    );
+                    setCategorySelections((prev) => ({
+                      ...prev,
+                      [category.category]: nextValue,
+                    }));
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+        </section>
+      )}
       <button
         type="button"
         className={styles.button}
         onClick={onAdd}
-        disabled={!hasAvailability}
+        disabled={!hasAvailability || !isAvailable || totalSelectedQuantity <= 0}
       >
         {added ? "Added to cart" : "Add to cart"}
       </button>

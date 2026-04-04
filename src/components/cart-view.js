@@ -61,6 +61,15 @@ export default function CartView() {
             <p>{item.productTypeName}</p>
             <p className={styles.mono}>{item.productTypeUuid}</p>
             {item.timeslotTime && <p className={styles.mono}>Timeslot: {item.timeslotTime}</p>}
+            {Array.isArray(item.ticketBreakdown) && item.ticketBreakdown.length > 0 && (
+              <ul className={styles.breakdown}>
+                {item.ticketBreakdown.map((entry) => (
+                  <li key={`${item.productUuid}:${item.productTypeUuid}:${entry.category}`}>
+                    {entry.label || entry.category}: {entry.quantity}
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className={styles.controls}>
               <label>
                 Qty
@@ -68,6 +77,7 @@ export default function CartView() {
                   type="number"
                   min="1"
                   value={item.quantity}
+                  disabled={Array.isArray(item.ticketBreakdown) && item.ticketBreakdown.length > 0}
                   onChange={(event) =>
                     updateQuantity(index, Number(event.target.value) || 1)
                   }
@@ -78,6 +88,11 @@ export default function CartView() {
                 <input type="text" value={item.travelDate || "Not selected"} readOnly />
               </label>
             </div>
+            {Array.isArray(item.ticketBreakdown) && item.ticketBreakdown.length > 0 && (
+              <p className={styles.hint}>
+                Edit ticket mix from the product page (remove and re-add this item).
+              </p>
+            )}
           </li>
         ))}
       </ul>

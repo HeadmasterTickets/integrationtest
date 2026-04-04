@@ -119,6 +119,45 @@
   cursor: not-allowed;
 }
 
+.ticketMix {
+  margin-top: 12px;
+  border: 1px solid #dbe4f4;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.ticketMixTitle {
+  font-size: 0.86rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.ticketMixGrid {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.ticketMixRow {
+  display: grid;
+  grid-template-columns: 1fr 92px;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticketMixRow span {
+  font-size: 0.84rem;
+  color: #3f4f70;
+}
+
+.ticketMixRow input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 720px) {
   .selectorRow {
     grid-template-columns: 1fr;
