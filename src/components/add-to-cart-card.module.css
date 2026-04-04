@@ -19,7 +19,8 @@
   color: #3f4f70;
 }
 
-.field input {
+.field input,
+.field select {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 10px 12px;

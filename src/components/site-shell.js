@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CartProvider, useCart } from "@/components/cart-provider";
+import { useCart } from "@/components/cart-provider";
 import styles from "./site-shell.module.css";
 
 function CartPill() {
@@ -15,9 +15,9 @@ function CartPill() {
   );
 }
 
-export default function SiteShell({ children }) {
+export default function SiteShell() {
   return (
-    <CartProvider>
+    <>
       <header className={styles.header}>
         <div className={styles.left}>
           <Link href="/" className={styles.logo}>
@@ -29,7 +29,6 @@ export default function SiteShell({ children }) {
         </div>
         <CartPill />
       </header>
-      {children}
-    </CartProvider>
+    </>
   );
 }

@@ -60,6 +60,7 @@ export default function CartView() {
             </div>
             <p>{item.productTypeName}</p>
             <p className={styles.mono}>{item.productTypeUuid}</p>
+            {item.timeslotTime && <p className={styles.mono}>Timeslot: {item.timeslotTime}</p>}
             <div className={styles.controls}>
               <label>
                 Qty

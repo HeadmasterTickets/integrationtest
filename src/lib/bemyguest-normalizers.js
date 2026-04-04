@@ -50,3 +50,42 @@ export function normalizeProductLocations(payload) {
     countryUuid: location?.countryUuid || "",
   }));
 }
+
+function formatTimeslotLabel(startTime, endTime) {
+  if (!startTime && !endTime) return "Timeslot";
+  if (startTime && endTime && startTime !== endTime) {
+    return `${startTime} - ${endTime}`;
+  }
+  return startTime || endTime;
+}
+
+export function normalizeAvailabilityCalendar(payload) {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+
+  return rows
+    .map((row) => {
+      const timeslots = Array.isArray(row?.timeslots)
+        ? row.timeslots.map((slot) => {
+            const quantities = Array.isArray(slot?.availability)
+              ? slot.availability.map((entry) => Number(entry?.quantity) || 0)
+              : [];
+            const totalQuantity = quantities.reduce((sum, qty) => sum + qty, 0);
+
+            return {
+              uuid: slot?.uuid || "",
+              startTime: slot?.startTime || "",
+              endTime: slot?.endTime || "",
+              label: formatTimeslotLabel(slot?.startTime, slot?.endTime),
+              availableQuantity: totalQuantity,
+            };
+          })
+        : [];
+
+      return {
+        date: row?.date || "",
+        weekday: row?.weekday || "",
+        timeslots,
+      };
+    })
+    .filter((row) => Boolean(row.date));
+}

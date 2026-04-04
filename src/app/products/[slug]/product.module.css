@@ -132,6 +132,59 @@
   gap: 6px;
 }
 
+.availabilitySection {
+  margin-top: 12px;
+  border: 1px solid #dbe4f4;
+  border-radius: 10px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.availabilitySection h4 {
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.availabilityList {
+  list-style: none;
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.availabilityList li {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dayLabel {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.slotLabel {
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.availabilityError {
+  margin-top: 8px;
+  color: #b91c1c;
+  font-size: 0.84rem;
+}
+
+.availabilityEmpty {
+  margin-top: 8px;
+  color: #475569;
+  font-size: 0.84rem;
+}
+
 .selectorRow {
   display: grid;
   grid-template-columns: 1fr 1fr;

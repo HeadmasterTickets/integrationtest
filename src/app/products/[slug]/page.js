@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import AddToCartCard from "@/components/add-to-cart-card";
 import {
+  getPriceListCalendar,
   getProductDetails,
   getProductTypesForProduct,
 } from "@/lib/bemyguest";
 import {
+  normalizeAvailabilityCalendar,
   normalizeProductTypes,
   pickProductName,
 } from "@/lib/bemyguest-normalizers";
@@ -15,6 +17,16 @@ import styles from "./product.module.css";
 function hasExpectedProductType(payload, expectedTypeUuid) {
   const candidates = normalizeProductTypes(payload);
   return candidates.some((item) => item.uuid === expectedTypeUuid);
+}
+
+function buildDateRange(daysAhead = 21) {
+  const start = new Date();
+  const end = new Date();
+  end.setDate(end.getDate() + daysAhead);
+  return {
+    dateStart: start.toISOString().slice(0, 10),
+    dateEnd: end.toISOString().slice(0, 10),
+  };
 }
 
 export async function generateMetadata({ params }) {
@@ -56,6 +68,38 @@ export default async function ProductPage({ params }) {
   const expectedTypeFound = productTypesPayload
     ? hasExpectedProductType(productTypesPayload, productTypeUuid)
     : false;
+
+  let availabilityByTypeUuid = {};
+  if (!errorMessage && productTypes.length > 0) {
+    const { dateStart, dateEnd } = buildDateRange(21);
+    const availabilityEntries = await Promise.all(
+      productTypes.map(async (type) => {
+        try {
+          const calendarPayload = await getPriceListCalendar(type.uuid, dateStart, dateEnd);
+          return [
+            type.uuid,
+            {
+              days: normalizeAvailabilityCalendar(calendarPayload),
+              error: "",
+              dateStart,
+              dateEnd,
+            },
+          ];
+        } catch (error) {
+          return [
+            type.uuid,
+            {
+              days: [],
+              error: error instanceof Error ? error.message : "Availability request failed.",
+              dateStart,
+              dateEnd,
+            },
+          ];
+        }
+      }),
+    );
+    availabilityByTypeUuid = Object.fromEntries(availabilityEntries);
+  }
 
   return (
     <main className={styles.page}>
@@ -118,21 +162,57 @@ export default async function ProductPage({ params }) {
               <p className={styles.emptyText}>No product-types returned by API.</p>
             ) : (
               <div className={styles.typeGrid}>
-                {productTypes.map((type) => (
-                  <article key={type.uuid} className={styles.typeCard}>
-                    <h3>{type.name}</h3>
-                    <p>
-                      <strong>Product-Type UUID</strong>
-                      <span>{type.uuid}</span>
-                    </p>
-                    <AddToCartCard
-                      productUuid={productUuid}
-                      productName={productName || productLabel}
-                      productTypeUuid={type.uuid}
-                      productTypeName={type.name}
-                    />
-                  </article>
-                ))}
+                {productTypes.map((type) => {
+                  const availability = availabilityByTypeUuid[type.uuid] || {
+                    days: [],
+                    error: "",
+                  };
+                  const previewDays = availability.days.slice(0, 6);
+
+                  return (
+                    <article key={type.uuid} className={styles.typeCard}>
+                      <h3>{type.name}</h3>
+                      <p>
+                        <strong>Product-Type UUID</strong>
+                        <span>{type.uuid}</span>
+                      </p>
+
+                      <section className={styles.availabilitySection}>
+                        <h4>Availability (next 21 days)</h4>
+                        {availability.error ? (
+                          <p className={styles.availabilityError}>{availability.error}</p>
+                        ) : previewDays.length === 0 ? (
+                          <p className={styles.availabilityEmpty}>
+                            No availability returned for this range.
+                          </p>
+                        ) : (
+                          <ul className={styles.availabilityList}>
+                            {previewDays.map((day) => (
+                              <li key={`${type.uuid}-${day.date}`}>
+                                <span className={styles.dayLabel}>
+                                  {day.date} ({day.weekday || "Day"})
+                                </span>
+                                <span className={styles.slotLabel}>
+                                  {day.timeslots.length > 0
+                                    ? day.timeslots.map((slot) => slot.label).join(", ")
+                                    : "No timeslots"}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </section>
+
+                      <AddToCartCard
+                        productUuid={productUuid}
+                        productName={productName || productLabel}
+                        productTypeUuid={type.uuid}
+                        productTypeName={type.name}
+                        availabilityDays={availability.days}
+                      />
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>

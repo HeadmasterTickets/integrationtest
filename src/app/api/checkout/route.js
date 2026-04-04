@@ -58,6 +58,8 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const primaryPriceId = priceMap[primaryKey] || "";
   const cartLines = buildCartLines(items, priceMap);
   const arrivalDate = primary.travelDate || "";
+  const primaryTimeslotUuid = primary.timeslotUuid || "";
+  const primaryTimeslotTime = primary.timeslotTime || "";
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
   const session = body?.session || {};
@@ -76,7 +78,7 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     schema_version: METADATA_SCHEMA_VERSION,
     environment,
     site: body?.site || baseUrl || "",
-    site_name: body?.site_name || "",
+    site_name: body?.site_name || "TicketFlow",
     booking_product: body?.booking_product || primary.productName || "",
     order_id: orderId,
     partner_reference: orderId,
@@ -89,8 +91,8 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     arrival_date: arrivalDate,
     arrival_date_display: arrivalDate,
     days_until_arrival: computeDaysUntilArrival(arrivalDate),
-    timeslot_uuid: body?.timeslot_uuid || "",
-    timeslot_time: body?.timeslot_time || "",
+    timeslot_uuid: body?.timeslot_uuid || primaryTimeslotUuid,
+    timeslot_time: body?.timeslot_time || primaryTimeslotTime,
     adults,
     children,
     infants,
@@ -193,6 +195,8 @@ function normalizeItems(items) {
       productName: item?.productName || "Ticket product",
       productTypeName: item?.productTypeName || "Variant",
       travelDate: item?.travelDate || "",
+      timeslotUuid: item?.timeslotUuid || "",
+      timeslotTime: item?.timeslotTime || "",
     }))
     .filter((item) => item.productUuid && item.productTypeUuid);
 }
