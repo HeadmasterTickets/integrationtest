@@ -61,6 +61,19 @@ function getTicketCountByCategory(ticketBreakdown, category) {
   }, 0);
 }
 
+function getTicketCountByCategoryAcrossItems(items, category) {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce(
+    (sum, item) => sum + getTicketCountByCategory(item?.ticketBreakdown, category),
+    0,
+  );
+}
+
+function getTotalQuantityAcrossItems(items) {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum, item) => sum + (Math.max(0, Number(item?.quantity) || 0)), 0);
+}
+
 function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const primary = items[0];
   const primaryKey = `${primary.productUuid}:${primary.productTypeUuid}`;
@@ -76,14 +89,17 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const pax = body?.pax || {};
   const environment = body?.environment || "demo";
 
-  const adultsFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "adult");
-  const childrenFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "child");
-  const infantsFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "infant");
-  const seniorsFromTickets = getTicketCountByCategory(primary.ticketBreakdown, "senior");
+  const adultsFromTickets = getTicketCountByCategoryAcrossItems(items, "adult");
+  const childrenFromTickets = getTicketCountByCategoryAcrossItems(items, "child");
+  const infantsFromTickets = getTicketCountByCategoryAcrossItems(items, "infant");
+  const seniorsFromTickets = getTicketCountByCategoryAcrossItems(items, "senior");
+  const totalQuantityAcrossItems = getTotalQuantityAcrossItems(items);
+  const hasExplicitCategoryCounts =
+    adultsFromTickets + childrenFromTickets + infantsFromTickets + seniorsFromTickets > 0;
 
   const adults = asNumber(
     pax.adults,
-    adultsFromTickets > 0 ? adultsFromTickets : primary.quantity,
+    hasExplicitCategoryCounts ? adultsFromTickets : totalQuantityAcrossItems || primary.quantity,
   );
   const children = asNumber(pax.children, childrenFromTickets);
   const infants = asNumber(pax.infants, infantsFromTickets);
