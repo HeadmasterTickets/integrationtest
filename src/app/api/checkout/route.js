@@ -3,7 +3,10 @@ import { getStripeClient } from "@/lib/stripe";
 import { getStripePriceId } from "@/lib/stripe-catalog";
 
 const METADATA_SCHEMA_VERSION = "1.0";
+/** Stripe metadata: max 50 keys per object; each value max 500 chars. */
 const METADATA_MAX_LENGTH = 500;
+const METADATA_MAX_KEYS = 50;
+const METADATA_RESERVED_KEYS = 13;
 const METADATA_ROUTE_KEY = "integration";
 
 function getBaseUrl() {
@@ -30,39 +33,57 @@ function computeDaysUntilArrival(arrivalDate) {
   return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
 }
 
-function buildCartSummary(items) {
-  return items.map((item) => ({
-    productUuid: item.productUuid,
-    productTypeUuid: item.productTypeUuid,
-    quantity: item.quantity,
-    travelDate: item.travelDate,
-  }));
+/**
+ * One row per checkout line item (multiple products / variants per order).
+ * Stripe line_items drive payment; this mirrors IDs for fulfillment webhooks.
+ */
+function buildCartLines(items, priceMap) {
+  return items.map((item) => {
+    const key = `${item.productUuid}:${item.productTypeUuid}`;
+    return {
+      productUuid: item.productUuid,
+      productTypeUuid: item.productTypeUuid,
+      productName: item.productName,
+      productTypeName: item.productTypeName,
+      quantity: item.quantity,
+      travelDate: item.travelDate || "",
+      stripe_catalog_price_id: priceMap[key] || "",
+    };
+  });
 }
 
 function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const primary = items[0];
   const primaryKey = `${primary.productUuid}:${primary.productTypeUuid}`;
   const primaryPriceId = priceMap[primaryKey] || "";
-  const cartSummary = buildCartSummary(items);
+  const cartLines = buildCartLines(items, priceMap);
   const arrivalDate = primary.travelDate || "";
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
   const session = body?.session || {};
   const pricing = body?.pricing || {};
   const pax = body?.pax || {};
+  const environment = body?.environment || "demo";
 
+  const adults = asNumber(pax.adults, primary.quantity);
+  const children = asNumber(pax.children, 0);
+  const infants = asNumber(pax.infants, 0);
+  const seniors = asNumber(pax.seniors, 0);
+  const totalPax = adults + children + infants + seniors;
+
+  // Field order matches integration contract / Stripe payload JSON schema.
   return {
     schema_version: METADATA_SCHEMA_VERSION,
-    environment: "demo",
-    site: baseUrl,
-    site_name: "TicketFlow",
-    booking_product: primary.productName,
+    environment,
+    site: body?.site || baseUrl || "",
+    site_name: body?.site_name || "",
+    booking_product: body?.booking_product || primary.productName || "",
     order_id: orderId,
     partner_reference: orderId,
     bmg_supplier: body?.bmg_supplier || "",
     bmg_product_uuid: primary.productUuid,
     bmg_product_type_uuid: primary.productTypeUuid,
-    bmg_product_name: primary.productName,
+    bmg_product_name: primary.productName || "",
     bmg_instant_confirmation: Boolean(body?.bmg_instant_confirmation || false),
     bmg_direct_admission: Boolean(body?.bmg_direct_admission || false),
     arrival_date: arrivalDate,
@@ -70,16 +91,12 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     days_until_arrival: computeDaysUntilArrival(arrivalDate),
     timeslot_uuid: body?.timeslot_uuid || "",
     timeslot_time: body?.timeslot_time || "",
-    adults: asNumber(pax.adults, primary.quantity),
-    children: asNumber(pax.children, 0),
-    infants: asNumber(pax.infants, 0),
-    seniors: asNumber(pax.seniors, 0),
-    total_pax:
-      asNumber(pax.adults, primary.quantity) +
-      asNumber(pax.children, 0) +
-      asNumber(pax.infants, 0) +
-      asNumber(pax.seniors, 0),
-    ticket_label: primary.productTypeName,
+    adults,
+    children,
+    infants,
+    seniors,
+    total_pax: totalPax,
+    ticket_label: primary.productTypeName || "",
     customer_email: customer.email || "",
     customer_first_name: customer.first_name || "",
     customer_last_name: customer.last_name || "",
@@ -122,7 +139,7 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     meeting_point: body?.meeting_point || "",
     support_email: body?.support_email || "",
     operator_name: body?.operator_name || "",
-    cart: cartSummary,
+    cart: cartLines,
   };
 }
 
@@ -137,6 +154,11 @@ function splitIntoMetadataChunks(json) {
 function createStripeMetadata(schemaPayload) {
   const payloadJson = JSON.stringify(schemaPayload);
   const chunks = splitIntoMetadataChunks(payloadJson);
+  if (METADATA_RESERVED_KEYS + chunks.length > METADATA_MAX_KEYS) {
+    throw new Error(
+      `Booking metadata too large for Stripe (${chunks.length} chunks; max ${METADATA_MAX_KEYS - METADATA_RESERVED_KEYS}). Shorten cart or optional fields.`,
+    );
+  }
 
   const metadata = {
     route_key: asMeta(METADATA_ROUTE_KEY),
