@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getProductDetails, getProductTypesForProduct } from "@/lib/bemyguest";
 import { getConfigSnapshot } from "@/lib/bmg-config-cache";
+import { getTask456Snapshot } from "@/lib/bmg-endpoint-cache";
 import {
   normalizeProductLocations,
   normalizeProductTypes,
@@ -53,6 +54,23 @@ export default async function IntegrationTestPage() {
   }
 
   const task3Ready = task3Locations.length > 0 && !task3Error;
+  const task456Snapshot = await getTask456Snapshot();
+
+  const task4Ready =
+    task456Snapshot.endpoints.products.isFresh &&
+    task456Snapshot.endpoints.productDetails.isFresh &&
+    task456Snapshot.endpoints.productTypeDetails.isFresh &&
+    !task456Snapshot.endpoints.products.lastError &&
+    !task456Snapshot.endpoints.productDetails.lastError &&
+    !task456Snapshot.endpoints.productTypeDetails.lastError;
+
+  const task5Ready =
+    task456Snapshot.endpoints.priceListsCalendar.isFresh &&
+    !task456Snapshot.endpoints.priceListsCalendar.lastError;
+
+  const task6Ready =
+    task456Snapshot.endpoints.realtimeDateCheck.hasData &&
+    !task456Snapshot.endpoints.realtimeDateCheck.lastError;
 
   return (
     <main className={styles.page}>
@@ -60,7 +78,7 @@ export default async function IntegrationTestPage() {
         <header className={styles.header}>
           <p className={styles.kicker}>Integration Test Runner</p>
           <h1>Tasks</h1>
-          <p>Task 1 and Task 2 are integrated with live API validation.</p>
+          <p>Tasks 1-6 are integrated with live API checks and cache tracking.</p>
         </header>
 
         <article className={styles.taskCard}>
@@ -231,6 +249,140 @@ export default async function IntegrationTestPage() {
                   </p>
                 </article>
               ))}
+            </div>
+          )}
+        </article>
+
+        <article className={styles.taskCard}>
+          <div className={styles.taskTop}>
+            <h2>Task 4 - Daily refresh for products/product-type endpoints</h2>
+            <span className={task4Ready ? styles.badgeOk : styles.badgeFail}>
+              {task4Ready ? "Ready" : "Needs attention"}
+            </span>
+          </div>
+
+          <div className={styles.grid}>
+            <p>
+              <strong>/v2/products</strong>
+              <span>
+                {task456Snapshot.endpoints.products.lastRefreshedAt || "No refresh yet"}
+              </span>
+            </p>
+            <p>
+              <strong>/v2/products/{'{uuid}'}</strong>
+              <span>
+                {task456Snapshot.endpoints.productDetails.lastRefreshedAt ||
+                  "No refresh yet"}
+              </span>
+            </p>
+            <p>
+              <strong>/v2/product-types/{'{uuid}'}</strong>
+              <span>
+                {task456Snapshot.endpoints.productTypeDetails.lastRefreshedAt ||
+                  "No refresh yet"}
+              </span>
+            </p>
+            <p>
+              <strong>Cache TTL</strong>
+              <span>{task456Snapshot.ttlHours} hours</span>
+            </p>
+          </div>
+
+          {!task4Ready && (
+            <div className={styles.errorBox}>
+              <h3>Refresh issue detected</h3>
+              <p>{task456Snapshot.endpoints.products.lastError}</p>
+              <p>{task456Snapshot.endpoints.productDetails.lastError}</p>
+              <p>{task456Snapshot.endpoints.productTypeDetails.lastError}</p>
+            </div>
+          )}
+        </article>
+
+        <article className={styles.taskCard}>
+          <div className={styles.taskTop}>
+            <h2>Task 5 - Daily refresh for /price-lists calendar endpoint</h2>
+            <span className={task5Ready ? styles.badgeOk : styles.badgeFail}>
+              {task5Ready ? "Ready" : "Needs attention"}
+            </span>
+          </div>
+
+          <div className={styles.grid}>
+            <p>
+              <strong>Endpoint</strong>
+              <span>/v2/product-types/{'{uuid}'}/price-lists</span>
+            </p>
+            <p>
+              <strong>Sample product-type UUID</strong>
+              <span>{task456Snapshot.samples.productTypeUuid}</span>
+            </p>
+            <p>
+              <strong>Cache range</strong>
+              <span>
+                {task456Snapshot.samples.dateStart} to {task456Snapshot.samples.dateEnd}
+              </span>
+            </p>
+            <p>
+              <strong>Last successful refresh</strong>
+              <span>
+                {task456Snapshot.endpoints.priceListsCalendar.lastRefreshedAt ||
+                  "No refresh yet"}
+              </span>
+            </p>
+          </div>
+
+          {!task5Ready && (
+            <div className={styles.errorBox}>
+              <h3>Refresh issue detected</h3>
+              <p>{task456Snapshot.endpoints.priceListsCalendar.lastError}</p>
+            </div>
+          )}
+        </article>
+
+        <article className={styles.taskCard}>
+          <div className={styles.taskTop}>
+            <h2>Task 6 - Use real-time /price-lists/{'{date}'} before booking</h2>
+            <span className={task6Ready ? styles.badgeOk : styles.badgeFail}>
+              {task6Ready ? "Ready" : "Needs attention"}
+            </span>
+          </div>
+
+          <div className={styles.grid}>
+            <p>
+              <strong>Realtime endpoint</strong>
+              <span>/v2/product-types/{'{uuid}'}/price-lists/{'{date}'}</span>
+            </p>
+            <p>
+              <strong>Checked date</strong>
+              <span>{task456Snapshot.samples.realtimeDate}</span>
+            </p>
+            <p>
+              <strong>Last live check attempt</strong>
+              <span>
+                {task456Snapshot.endpoints.realtimeDateCheck.lastAttemptAt ||
+                  "No check yet"}
+              </span>
+            </p>
+            <p>
+              <strong>Last live check success</strong>
+              <span>
+                {task456Snapshot.endpoints.realtimeDateCheck.lastRefreshedAt ||
+                  "No successful check yet"}
+              </span>
+            </p>
+          </div>
+
+          {task6Ready ? (
+            <div className={styles.successBox}>
+              <h3>Realtime availability endpoint verified</h3>
+              <p>
+                This endpoint is called for up-to-date availability checks prior
+                to booking submission.
+              </p>
+            </div>
+          ) : (
+            <div className={styles.errorBox}>
+              <h3>Realtime check failed</h3>
+              <p>{task456Snapshot.endpoints.realtimeDateCheck.lastError}</p>
             </div>
           )}
         </article>

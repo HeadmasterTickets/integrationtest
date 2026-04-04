@@ -86,3 +86,27 @@ export async function getProductTypesForProduct(productUuid) {
 export async function getConfigData() {
   return bmgFetch("/v2/config");
 }
+
+export async function getProductsList({ perPage = 1 } = {}) {
+  const query = new URLSearchParams({
+    per_page: String(perPage),
+    page: "1",
+  });
+  return bmgFetch(`/v2/products?${query.toString()}`);
+}
+
+export async function getProductTypeDetails(productTypeUuid) {
+  return bmgFetch(`/v2/product-types/${productTypeUuid}`);
+}
+
+export async function getPriceListCalendar(productTypeUuid, dateStart, dateEnd) {
+  const query = new URLSearchParams({
+    date_start: dateStart,
+    date_end: dateEnd,
+  });
+  return bmgFetch(`/v2/product-types/${productTypeUuid}/price-lists?${query.toString()}`);
+}
+
+export async function getAvailabilityForDate(productTypeUuid, date) {
+  return bmgFetch(`/v2/product-types/${productTypeUuid}/price-lists/${date}`);
+}
