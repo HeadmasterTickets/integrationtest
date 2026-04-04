@@ -10,7 +10,9 @@ export function pickText(value) {
 export function pickProductName(payload) {
   return (
     pickText(
-      payload?.name ||
+      payload?.data?.title ||
+        payload?.title ||
+        payload?.name ||
         payload?.data?.name ||
         payload?.product?.name ||
         payload?.data?.product?.name,
@@ -30,7 +32,8 @@ export function normalizeProductTypes(payload) {
 
   return candidates.map((item) => ({
     uuid: item?.uuid || item?.id || "Unknown UUID",
-    name: pickText(item?.name) || "Unnamed variant",
+    name:
+      pickText(item?.title || item?.name || item?.label) || "Unnamed variant",
   }));
 }
 

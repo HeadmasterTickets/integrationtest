@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import AddToCartCard from "@/components/add-to-cart-card";
 import {
   getProductDetails,
@@ -8,31 +9,43 @@ import {
   normalizeProductTypes,
   pickProductName,
 } from "@/lib/bemyguest-normalizers";
+import { getIntegrationProductBySlug } from "@/lib/integration-products";
 import styles from "./product.module.css";
 
-const PRODUCT_1_UUID = "a26e84c1-ebe3-5611-8507-6dc092053882";
-const PRODUCT_1_TYPE_UUID = "beb95299-4144-56ea-8764-882f3e67b31f";
-
-function hasExpectedProductType(payload) {
+function hasExpectedProductType(payload, expectedTypeUuid) {
   const candidates = normalizeProductTypes(payload);
-
-  return candidates.some((item) => item.uuid === PRODUCT_1_TYPE_UUID);
+  return candidates.some((item) => item.uuid === expectedTypeUuid);
 }
 
-export const metadata = {
-  title: "Product 1 | Integration Test",
-  description: "Published Product 1 view for BeMyGuest integration testing.",
-};
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const product = getIntegrationProductBySlug(slug);
+  if (!product) {
+    return { title: "Product | Integration Test" };
+  }
+  return {
+    title: `${product.id} | Integration Test`,
+    description: `Published ${product.id} view for BeMyGuest integration testing.`,
+  };
+}
 
-export default async function Product1Page() {
+export default async function ProductPage({ params }) {
+  const { slug } = await params;
+  const product = getIntegrationProductBySlug(slug);
+  if (!product) {
+    notFound();
+  }
+
+  const { productUuid, productTypeUuid, id: productLabel } = product;
+
   let productPayload = null;
   let productTypesPayload = null;
   let errorMessage = null;
 
   try {
     [productPayload, productTypesPayload] = await Promise.all([
-      getProductDetails(PRODUCT_1_UUID),
-      getProductTypesForProduct(PRODUCT_1_UUID),
+      getProductDetails(productUuid),
+      getProductTypesForProduct(productUuid),
     ]);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : "Unknown API error.";
@@ -41,29 +54,29 @@ export default async function Product1Page() {
   const productName = productPayload ? pickProductName(productPayload) : null;
   const productTypes = productTypesPayload ? normalizeProductTypes(productTypesPayload) : [];
   const expectedTypeFound = productTypesPayload
-    ? hasExpectedProductType(productTypesPayload)
+    ? hasExpectedProductType(productTypesPayload, productTypeUuid)
     : false;
 
   return (
     <main className={styles.page}>
       <section className={styles.card}>
         <header className={styles.header}>
-          <p className={styles.kicker}>Task 1 Published Product</p>
-          <h1>{productName || "Product 1"} Ticket Details</h1>
+          <p className={styles.kicker}>BeMyGuest Published Product</p>
+          <h1>{productName || productLabel} Ticket Details</h1>
           <p className={styles.subtitle}>
-            This page is used as evidence for task 1 in the BeMyGuest
-            integration test.
+            Product details and variants load from the BeMyGuest demo API. Use
+            Add to cart to test checkout.
           </p>
         </header>
 
         <div className={styles.meta}>
           <p>
             <strong>Product UUID</strong>
-            <span>{PRODUCT_1_UUID}</span>
+            <span>{productUuid}</span>
           </p>
           <p>
-            <strong>Expected Product-Type UUID</strong>
-            <span>{PRODUCT_1_TYPE_UUID}</span>
+            <strong>Primary Product-Type UUID</strong>
+            <span>{productTypeUuid}</span>
           </p>
           {productName && (
             <p>
@@ -73,7 +86,7 @@ export default async function Product1Page() {
           )}
           {productTypesPayload && (
             <p>
-              <strong>Expected Product-Type Found</strong>
+              <strong>Primary Product-Type Found</strong>
               <span>{expectedTypeFound ? "Yes" : "No"}</span>
             </p>
           )}
@@ -113,8 +126,8 @@ export default async function Product1Page() {
                       <span>{type.uuid}</span>
                     </p>
                     <AddToCartCard
-                      productUuid={PRODUCT_1_UUID}
-                      productName={productName || "Product 1"}
+                      productUuid={productUuid}
+                      productName={productName || productLabel}
                       productTypeUuid={type.uuid}
                       productTypeName={type.name}
                     />
