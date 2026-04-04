@@ -19,14 +19,47 @@ function hasExpectedProductType(payload, expectedTypeUuid) {
   return candidates.some((item) => item.uuid === expectedTypeUuid);
 }
 
-function buildDateRange(daysAhead = 21) {
-  const start = new Date();
-  const end = new Date();
-  end.setDate(end.getDate() + daysAhead);
-  return {
-    dateStart: start.toISOString().slice(0, 10),
-    dateEnd: end.toISOString().slice(0, 10),
-  };
+function addDays(dateString, days) {
+  const date = new Date(dateString);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function buildAvailabilityRangesForYear() {
+  const today = new Date().toISOString().slice(0, 10);
+  // API calendar range is capped at 6 months; split into two safe windows.
+  return [
+    {
+      dateStart: today,
+      dateEnd: addDays(today, 179),
+    },
+    {
+      dateStart: addDays(today, 180),
+      dateEnd: addDays(today, 365),
+    },
+  ];
+}
+
+function mergeAvailabilityDays(dayRows) {
+  const byDate = new Map();
+  for (const day of dayRows) {
+    if (!day?.date) continue;
+    if (!byDate.has(day.date)) {
+      byDate.set(day.date, day);
+      continue;
+    }
+    const existing = byDate.get(day.date);
+    const timeslotMap = new Map();
+    for (const slot of [...(existing.timeslots || []), ...(day.timeslots || [])]) {
+      if (!slot?.uuid) continue;
+      timeslotMap.set(slot.uuid, slot);
+    }
+    byDate.set(day.date, {
+      ...existing,
+      timeslots: Array.from(timeslotMap.values()),
+    });
+  }
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function generateMetadata({ params }) {
@@ -71,18 +104,25 @@ export default async function ProductPage({ params }) {
 
   let availabilityByTypeUuid = {};
   if (!errorMessage && productTypes.length > 0) {
-    const { dateStart, dateEnd } = buildDateRange(21);
+    const ranges = buildAvailabilityRangesForYear();
     const availabilityEntries = await Promise.all(
       productTypes.map(async (type) => {
         try {
-          const calendarPayload = await getPriceListCalendar(type.uuid, dateStart, dateEnd);
+          const rangePayloads = await Promise.all(
+            ranges.map((range) =>
+              getPriceListCalendar(type.uuid, range.dateStart, range.dateEnd),
+            ),
+          );
+          const mergedDays = mergeAvailabilityDays(
+            rangePayloads.flatMap((payload) => normalizeAvailabilityCalendar(payload)),
+          );
           return [
             type.uuid,
             {
-              days: normalizeAvailabilityCalendar(calendarPayload),
+              days: mergedDays,
               error: "",
-              dateStart,
-              dateEnd,
+              dateStart: ranges[0].dateStart,
+              dateEnd: ranges[ranges.length - 1].dateEnd,
             },
           ];
         } catch (error) {
@@ -91,8 +131,8 @@ export default async function ProductPage({ params }) {
             {
               days: [],
               error: error instanceof Error ? error.message : "Availability request failed.",
-              dateStart,
-              dateEnd,
+              dateStart: ranges[0].dateStart,
+              dateEnd: ranges[ranges.length - 1].dateEnd,
             },
           ];
         }
@@ -178,12 +218,12 @@ export default async function ProductPage({ params }) {
                       </p>
 
                       <section className={styles.availabilitySection}>
-                        <h4>Availability (next 21 days)</h4>
+                          <h4>Availability (next 12 months)</h4>
                         {availability.error ? (
                           <p className={styles.availabilityError}>{availability.error}</p>
                         ) : previewDays.length === 0 ? (
                           <p className={styles.availabilityEmpty}>
-                            No availability returned for this range.
+                              No availability returned in the next 12 months.
                           </p>
                         ) : (
                           <ul className={styles.availabilityList}>

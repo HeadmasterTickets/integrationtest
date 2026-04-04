@@ -187,6 +187,54 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.rateGrid {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.rateCard {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rateCard h3 {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.rateCard p {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rateCard strong {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #475569;
+}
+
+.rateCard span {
+  color: #0f172a;
+  font-size: 0.8rem;
+  word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.taskSubtleText {
+  margin-top: 10px;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
 .button {
   display: inline-flex;
   width: fit-content;

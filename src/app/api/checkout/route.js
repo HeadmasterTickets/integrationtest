@@ -10,7 +10,7 @@ const METADATA_RESERVED_KEYS = 13;
 const METADATA_ROUTE_KEY = "integration";
 
 function getBaseUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  return process.env.NEXT_PUBLIC_APP_URL || "https://integrationtest-three.vercel.app";
 }
 
 function asMeta(value) {

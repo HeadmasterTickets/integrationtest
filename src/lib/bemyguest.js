@@ -14,6 +14,14 @@ function getConfig() {
 }
 
 async function bmgFetch(pathname) {
+  const { payload } = await bmgFetchWithStatus(pathname, { method: "GET" });
+  return payload;
+}
+
+async function bmgFetchWithStatus(
+  pathname,
+  { method = "GET", body = undefined } = {},
+) {
   const { baseUrl, apiKey } = getConfig();
   const url = `${baseUrl}${pathname}`;
 
@@ -24,11 +32,13 @@ async function bmgFetch(pathname) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       response = await fetch(url, {
-        method: "GET",
+        method,
         headers: {
           "X-Authorization": apiKey,
           Accept: "application/json",
+          ...(body ? { "Content-Type": "application/json" } : {}),
         },
+        ...(body ? { body: JSON.stringify(body) } : {}),
         cache: "no-store",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
@@ -54,13 +64,13 @@ async function bmgFetch(pathname) {
     );
   }
 
-  const body = await response.text();
+  const rawBody = await response.text();
   let payload = {};
-  if (body) {
+  if (rawBody) {
     try {
-      payload = JSON.parse(body);
+      payload = JSON.parse(rawBody);
     } catch {
-      payload = { raw: body };
+      payload = { raw: rawBody };
     }
   }
 
@@ -72,7 +82,7 @@ async function bmgFetch(pathname) {
     throw new Error(message);
   }
 
-  return payload;
+  return { payload, status: response.status };
 }
 
 export async function getProductDetails(productUuid) {
@@ -109,4 +119,19 @@ export async function getPriceListCalendar(productTypeUuid, dateStart, dateEnd) 
 
 export async function getAvailabilityForDate(productTypeUuid, date) {
   return bmgFetch(`/v2/product-types/${productTypeUuid}/price-lists/${date}`);
+}
+
+export async function createBooking(payload) {
+  const result = await bmgFetchWithStatus("/v2/bookings", {
+    method: "POST",
+    body: payload,
+  });
+  return result;
+}
+
+export async function updateBookingStatus(bookingUuid, status) {
+  const result = await bmgFetchWithStatus(`/v2/bookings/${bookingUuid}/${status}`, {
+    method: "PUT",
+  });
+  return result;
 }
