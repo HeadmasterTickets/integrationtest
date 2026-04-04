@@ -29,6 +29,30 @@ export const INTEGRATION_PRODUCTS = [
     productTypeUuid: "ad0368f9-3bfd-51e4-beb0-7af11e157741",
     href: "/products/product-5",
   },
+  {
+    id: "Task 17",
+    productUuid: "8e18ab29-1297-4e3c-b8cb-cbbc6a00d0dd",
+    productTypeUuid: "ca270be0-96ea-48c9-9ac5-4e5a6be6fb3c",
+    href: "/products/task-17",
+  },
+  {
+    id: "Product 6",
+    productUuid: "19b83178-84e3-4d42-aa95-da42d524559c",
+    productTypeUuid: "906eecf7-f62f-47e0-98c9-052b714cb221",
+    href: "/products/product-6",
+  },
+  {
+    id: "Product 7",
+    productUuid: "90264dc9-703d-59d7-9dad-8812b704d005",
+    productTypeUuid: "d11b9919-4da2-5a4c-bcea-c3b9f688cc62",
+    href: "/products/product-7",
+  },
+  {
+    id: "Product 8",
+    productUuid: "ac6a2b69-a014-5c50-806c-2cbda706e019",
+    productTypeUuid: "d03837b9-c89a-477d-8c53-e8f0e759a0fb",
+    href: "/products/product-8",
+  },
 ];
 
 export function getIntegrationProductByUuid(productUuid) {
