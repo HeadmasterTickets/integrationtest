@@ -6,7 +6,7 @@ const METADATA_SCHEMA_VERSION = "1.0";
 /** Stripe metadata: max 50 keys per object; each value max 500 chars. */
 const METADATA_MAX_LENGTH = 500;
 const METADATA_MAX_KEYS = 50;
-const METADATA_RESERVED_KEYS = 13;
+const METADATA_RESERVED_KEYS = 15;
 const METADATA_ROUTE_KEY = "integration";
 
 function getBaseUrl() {
@@ -47,6 +47,8 @@ function buildCartLines(items, priceMap) {
       productTypeName: item.productTypeName,
       quantity: item.quantity,
       travelDate: item.travelDate || "",
+      timeslotUuid: item.timeslotUuid || "",
+      timeslotTime: item.timeslotTime || "",
       ticketBreakdown: item.ticketBreakdown || [],
       stripe_catalog_price_id: priceMap[key] || "",
     };
@@ -74,14 +76,27 @@ function getTotalQuantityAcrossItems(items) {
   return items.reduce((sum, item) => sum + (Math.max(0, Number(item?.quantity) || 0)), 0);
 }
 
+function getPrimaryTimeslot(items) {
+  if (!Array.isArray(items)) {
+    return { uuid: "", time: "" };
+  }
+  const withTimeslot = items.find((item) => item?.timeslotUuid || item?.timeslotTime);
+  if (!withTimeslot) {
+    return { uuid: "", time: "" };
+  }
+  return {
+    uuid: withTimeslot.timeslotUuid || "",
+    time: withTimeslot.timeslotTime || "",
+  };
+}
+
 function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const primary = items[0];
   const primaryKey = `${primary.productUuid}:${primary.productTypeUuid}`;
   const primaryPriceId = priceMap[primaryKey] || "";
   const cartLines = buildCartLines(items, priceMap);
   const arrivalDate = primary.travelDate || "";
-  const primaryTimeslotUuid = primary.timeslotUuid || "";
-  const primaryTimeslotTime = primary.timeslotTime || "";
+  const primaryTimeslot = getPrimaryTimeslot(items);
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
   const session = body?.session || {};
@@ -124,8 +139,8 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     arrival_date: arrivalDate,
     arrival_date_display: arrivalDate,
     days_until_arrival: computeDaysUntilArrival(arrivalDate),
-    timeslot_uuid: body?.timeslot_uuid || primaryTimeslotUuid,
-    timeslot_time: body?.timeslot_time || primaryTimeslotTime,
+    timeslot_uuid: body?.timeslot_uuid || primaryTimeslot.uuid,
+    timeslot_time: body?.timeslot_time || primaryTimeslot.time,
     adults,
     children,
     infants,
@@ -204,6 +219,8 @@ function createStripeMetadata(schemaPayload) {
     bmg_product_uuid: asMeta(schemaPayload.bmg_product_uuid),
     bmg_product_type_uuid: asMeta(schemaPayload.bmg_product_type_uuid),
     arrival_date: asMeta(schemaPayload.arrival_date),
+    timeslot_uuid: asMeta(schemaPayload.timeslot_uuid),
+    timeslot_time: asMeta(schemaPayload.timeslot_time),
     total_pax: asMeta(schemaPayload.total_pax),
     order_currency: asMeta(schemaPayload.order_currency),
     order_amount_eur: asMeta(schemaPayload.order_amount_eur),
