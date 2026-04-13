@@ -53,6 +53,24 @@ export const INTEGRATION_PRODUCTS = [
     productTypeUuid: "d03837b9-c89a-477d-8c53-e8f0e759a0fb",
     href: "/products/product-8",
   },
+  {
+    id: "Jurong Bird Park",
+    productUuid: "ec1897a3-86fb-525c-914b-bfe39a4d5396",
+    productTypeUuid: "5f775003-4111-565d-a3d2-568e7ec57506",
+    href: "/products/jurong-bird-park",
+  },
+  {
+    id: "Dinner Cruise with Transfer Services",
+    productUuid: "22eef52f-70a7-4140-9160-2dd0dff4d638",
+    productTypeUuid: "16359b5d-575d-46e8-947c-5941a0fef58a",
+    href: "/products/dinner-cruise-with-transfer-services",
+  },
+  {
+    id: "Scuba Diving at TARP Island - For Cert Diver With Two Boat Dives",
+    productUuid: "49d32aab-f0f1-4ee7-8c50-52ab64ac29de",
+    productTypeUuid: "20cbc3d0-cad6-4e27-869f-7375c8564255",
+    href: "/products/scuba-diving-at-tarp-island-for-cert-diver-with-two-boat-dives",
+  },
 ];
 
 export function getIntegrationProductByUuid(productUuid) {
