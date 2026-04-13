@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useCart } from "@/components/cart-provider";
+import { validateTicketSelectionAgainstPaxConstraints } from "@/lib/bemyguest-normalizers";
 import styles from "./add-to-cart-card.module.css";
 
 export default function AddToCartCard({
@@ -10,6 +11,7 @@ export default function AddToCartCard({
   productTypeUuid,
   productTypeName,
   availabilityDays = [],
+  paxConstraints = null,
 }) {
   const { addItem, isAvailable } = useCart();
   const sortedAvailabilityDaysRaw = useMemo(
@@ -57,6 +59,7 @@ export default function AddToCartCard({
   );
   const [categorySelections, setCategorySelections] = useState({});
   const [added, setAdded] = useState(false);
+  const [paxError, setPaxError] = useState("");
 
   const selectedAvailabilityDay = useMemo(() => {
     if (!hasAvailability) return null;
@@ -99,25 +102,80 @@ export default function AddToCartCard({
   const categoryQuantities = useMemo(() => {
     if (activeCategoryAvailability.length === 0) return {};
 
+    const selectionFor = (code) => {
+      const key = String(code || "").toLowerCase();
+      if (categorySelections[key] !== undefined) return categorySelections[key];
+      if (categorySelections[code] !== undefined) return categorySelections[code];
+      return undefined;
+    };
+
+    const categoryMin = (code) => {
+      const key = String(code || "").toLowerCase();
+      const v = paxConstraints?.perCategory?.[key]?.min;
+      return Number.isFinite(Number(v)) ? Number(v) : 0;
+    };
+
+    const categoryMaxCap = (code, stockLimit) => {
+      const key = String(code || "").toLowerCase();
+      const cap = paxConstraints?.perCategory?.[key]?.max;
+      const stock = Number(stockLimit) || 0;
+      if (Number.isFinite(Number(cap))) {
+        return Math.min(stock, Number(cap));
+      }
+      return stock;
+    };
+
     const next = {};
-    let selectedTotal = 0;
     for (const category of activeCategoryAvailability) {
       const code = category.category;
-      const limit = Number(category.availableQuantity) || 0;
-      const requested = Number(categorySelections[code]) || 0;
-      const clamped = Math.max(0, Math.min(limit, requested));
-      next[code] = clamped;
-      selectedTotal += clamped;
+      const stock = Number(category.availableQuantity) || 0;
+      const maxCap = categoryMaxCap(code, stock);
+      const minCap = categoryMin(code);
+      const raw = selectionFor(code);
+      if (raw !== undefined && raw !== "") {
+        const requested = Number(raw);
+        if (!Number.isNaN(requested)) {
+          next[code] = Math.max(minCap, Math.min(maxCap, requested));
+          continue;
+        }
+      }
+      next[code] = 0;
+    }
+
+    let selectedTotal = activeCategoryAvailability.reduce(
+      (sum, c) => sum + (Number(next[c.category]) || 0),
+      0,
+    );
+
+    if (selectedTotal === 0) {
+      for (const category of activeCategoryAvailability) {
+        const code = category.category;
+        const stock = Number(category.availableQuantity) || 0;
+        const maxCap = categoryMaxCap(code, stock);
+        const minCap = categoryMin(code);
+        if (minCap > 0) {
+          next[code] = Math.min(maxCap, minCap);
+        }
+      }
+      selectedTotal = activeCategoryAvailability.reduce(
+        (sum, c) => sum + (Number(next[c.category]) || 0),
+        0,
+      );
     }
 
     if (selectedTotal === 0) {
       const first = activeCategoryAvailability[0];
-      const firstLimit = Number(first.availableQuantity) || 0;
-      next[first.category] = Math.max(0, Math.min(1, firstLimit));
+      const code = first.category;
+      const stock = Number(first.availableQuantity) || 0;
+      const maxCap = categoryMaxCap(code, stock);
+      const minCap = categoryMin(code);
+      if (minCap === 0) {
+        next[code] = Math.max(0, Math.min(1, maxCap));
+      }
     }
 
     return next;
-  }, [activeCategoryAvailability, categorySelections]);
+  }, [activeCategoryAvailability, categorySelections, paxConstraints]);
 
   const totalSelectedQuantity = useMemo(
     () =>
@@ -127,6 +185,32 @@ export default function AddToCartCard({
       }, 0),
     [activeCategoryAvailability, categoryQuantities],
   );
+
+  const paxConstraintsHint = useMemo(() => {
+    if (!paxConstraints) return "";
+    const bits = [];
+    if (Number.isFinite(paxConstraints.minPax) && paxConstraints.minPax > 0) {
+      bits.push(`min ${paxConstraints.minPax} guest(s) total`);
+    }
+    if (Number.isFinite(paxConstraints.maxPax) && paxConstraints.maxPax > 0) {
+      bits.push(`max ${paxConstraints.maxPax} guest(s) total`);
+    }
+    const adultMin = paxConstraints.perCategory?.adult?.min;
+    if (Number.isFinite(adultMin) && adultMin > 0) {
+      bits.push(`min ${adultMin} adult(s)`);
+    }
+    return bits.join(" · ");
+  }, [paxConstraints]);
+
+  const selectionPassesPaxRules = useMemo(() => {
+    if (!paxConstraints || activeCategoryAvailability.length === 0) return true;
+    const ticketBreakdown = activeCategoryAvailability.map((category) => ({
+      category: category.category,
+      label: category.label,
+      quantity: Number(categoryQuantities[category.category]) || 0,
+    }));
+    return validateTicketSelectionAgainstPaxConstraints(ticketBreakdown, paxConstraints).ok;
+  }, [activeCategoryAvailability, categoryQuantities, paxConstraints]);
 
   const monthDays = useMemo(() => {
     if (!selectedMonth) return [];
@@ -176,6 +260,18 @@ export default function AddToCartCard({
         };
       })
       .filter((entry) => entry.quantity > 0);
+
+    if (paxConstraints) {
+      const { ok, message } = validateTicketSelectionAgainstPaxConstraints(
+        ticketBreakdown,
+        paxConstraints,
+      );
+      if (!ok) {
+        setPaxError(message);
+        return;
+      }
+    }
+    setPaxError("");
 
     addItem({
       productUuid,
@@ -311,6 +407,11 @@ export default function AddToCartCard({
       {activeCategoryAvailability.length > 0 && (
         <section className={styles.ticketMix}>
           <p className={styles.ticketMixTitle}>Ticket Types</p>
+          {paxConstraintsHint ? (
+            <p className={styles.constraintsHint}>
+              BeMyGuest booking limits: {paxConstraintsHint}.
+            </p>
+          ) : null}
           <div className={styles.ticketMixGrid}>
             {activeCategoryAvailability.map((category) => (
               <label key={category.category} className={styles.ticketMixRow}>
@@ -319,20 +420,42 @@ export default function AddToCartCard({
                 </span>
                 <input
                   type="number"
-                  min="0"
-                  max={String(category.availableQuantity)}
+                  min={String(
+                    (() => {
+                      const key = String(category.category || "").toLowerCase();
+                      const v = paxConstraints?.perCategory?.[key]?.min;
+                      return Number.isFinite(Number(v)) ? Number(v) : 0;
+                    })(),
+                  )}
+                  max={String(
+                    (() => {
+                      const key = String(category.category || "").toLowerCase();
+                      const cap = paxConstraints?.perCategory?.[key]?.max;
+                      const stock = Number(category.availableQuantity) || 0;
+                      if (Number.isFinite(Number(cap))) {
+                        return Math.min(stock, Number(cap));
+                      }
+                      return stock;
+                    })(),
+                  )}
                   value={categoryQuantities[category.category] ?? 0}
                   onChange={(event) => {
+                    setPaxError("");
+                    const key = String(category.category || "").toLowerCase();
+                    const stock = Number(category.availableQuantity) || 0;
+                    const apiMax = paxConstraints?.perCategory?.[key]?.max;
+                    const maxCap = Number.isFinite(Number(apiMax))
+                      ? Math.min(stock, Number(apiMax))
+                      : stock;
+                    const apiMin = paxConstraints?.perCategory?.[key]?.min;
+                    const minCap = Number.isFinite(Number(apiMin)) ? Number(apiMin) : 0;
                     const nextValue = Math.max(
-                      0,
-                      Math.min(
-                        Number(category.availableQuantity) || 0,
-                        Number(event.target.value) || 0,
-                      ),
+                      minCap,
+                      Math.min(maxCap, Number(event.target.value) || 0),
                     );
                     setCategorySelections((prev) => ({
                       ...prev,
-                      [category.category]: nextValue,
+                      [key]: nextValue,
                     }));
                   }}
                 />
@@ -341,11 +464,17 @@ export default function AddToCartCard({
           </div>
         </section>
       )}
+      {paxError ? <p className={styles.unavailableText}>{paxError}</p> : null}
       <button
         type="button"
         className={styles.button}
         onClick={onAdd}
-        disabled={!hasAvailability || !isAvailable || totalSelectedQuantity <= 0}
+        disabled={
+          !hasAvailability ||
+          !isAvailable ||
+          totalSelectedQuantity <= 0 ||
+          !selectionPassesPaxRules
+        }
       >
         {added ? "Added to cart" : "Add to cart"}
       </button>

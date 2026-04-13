@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { getProductTypeDetails } from "@/lib/bemyguest";
+import {
+  normalizeProductTypePaxConstraints,
+  validateTicketSelectionAgainstPaxConstraints,
+} from "@/lib/bemyguest-normalizers";
 import { getStripeClient } from "@/lib/stripe";
 import { getStripePriceId } from "@/lib/stripe-catalog";
 
@@ -266,6 +271,32 @@ function normalizeItems(items) {
     .filter((item) => item.productUuid && item.productTypeUuid);
 }
 
+async function assertCartItemsMeetPaxConstraints(items) {
+  const typeUuids = [...new Set(items.map((item) => item.productTypeUuid).filter(Boolean))];
+  const detailPayloads = await Promise.all(
+    typeUuids.map((uuid) => getProductTypeDetails(uuid).catch(() => null)),
+  );
+  const constraintByTypeUuid = {};
+  typeUuids.forEach((uuid, index) => {
+    const constraints = normalizeProductTypePaxConstraints(detailPayloads[index]);
+    if (constraints) {
+      constraintByTypeUuid[uuid] = constraints;
+    }
+  });
+
+  for (const item of items) {
+    const constraints = constraintByTypeUuid[item.productTypeUuid];
+    if (!constraints) continue;
+    const { ok, message } = validateTicketSelectionAgainstPaxConstraints(
+      item.ticketBreakdown,
+      constraints,
+    );
+    if (!ok) {
+      throw new Error(message);
+    }
+  }
+}
+
 export async function POST(request) {
   try {
     const stripe = getStripeClient();
@@ -275,6 +306,8 @@ export async function POST(request) {
     if (items.length === 0) {
       return NextResponse.json({ error: "Cart is empty." }, { status: 400 });
     }
+
+    await assertCartItemsMeetPaxConstraints(items);
 
     const priceMap = {};
     const lineItems = items.map((item) => {

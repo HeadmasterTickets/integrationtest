@@ -4,10 +4,12 @@ import AddToCartCard from "@/components/add-to-cart-card";
 import {
   getPriceListCalendar,
   getProductDetails,
+  getProductTypeDetails,
   getProductTypesForProduct,
 } from "@/lib/bemyguest";
 import {
   normalizeAvailabilityCalendar,
+  normalizeProductTypePaxConstraints,
   normalizeProductTypes,
   pickProductName,
 } from "@/lib/bemyguest-normalizers";
@@ -105,8 +107,20 @@ export default async function ProductPage({ params }) {
     : false;
 
   let availabilityByTypeUuid = {};
+  const paxConstraintsByTypeUuid = {};
   if (!errorMessage && productTypes.length > 0) {
     const ranges = buildAvailabilityRangesForYear();
+
+    const typeDetailPayloads = await Promise.all(
+      productTypes.map((type) => getProductTypeDetails(type.uuid).catch(() => null)),
+    );
+    productTypes.forEach((type, index) => {
+      const constraints = normalizeProductTypePaxConstraints(typeDetailPayloads[index]);
+      if (constraints) {
+        paxConstraintsByTypeUuid[type.uuid] = constraints;
+      }
+    });
+
     const availabilityEntries = await Promise.all(
       productTypes.map(async (type) => {
         try {
@@ -258,6 +272,7 @@ export default async function ProductPage({ params }) {
                         productTypeUuid={type.uuid}
                         productTypeName={type.name}
                         availabilityDays={availability.days}
+                        paxConstraints={paxConstraintsByTypeUuid[type.uuid] || null}
                       />
                     </article>
                   );

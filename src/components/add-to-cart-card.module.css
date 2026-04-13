@@ -158,6 +158,13 @@
   font-size: 0.9rem;
 }
 
+.constraintsHint {
+  margin: 0 0 12px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #334155;
+}
+
 @media (max-width: 720px) {
   .selectorRow {
     grid-template-columns: 1fr;

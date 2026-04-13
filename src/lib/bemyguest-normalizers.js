@@ -135,3 +135,86 @@ export function normalizeAvailabilityCalendar(payload) {
     })
     .filter((row) => Boolean(row.date));
 }
+
+/**
+ * Reads BeMyGuest product-type detail fields (minPax / maxPax and ticketTypes[].min/max).
+ * @param {object|null|undefined} payload
+ * @returns {{ minPax: number|null, maxPax: number|null, perCategory: Record<string, { min?: number, max?: number }> }|null}
+ */
+export function normalizeProductTypePaxConstraints(payload) {
+  const data = payload?.data ?? payload;
+  if (!data || typeof data !== "object") return null;
+
+  const minPax = Number.isFinite(Number(data.minPax)) ? Number(data.minPax) : null;
+  const maxPax = Number.isFinite(Number(data.maxPax)) ? Number(data.maxPax) : null;
+
+  const ticketTypes = Array.isArray(data.ticketTypes) ? data.ticketTypes : [];
+  const perCategory = {};
+  for (const tt of ticketTypes) {
+    if (!tt || tt.allowed !== true) continue;
+    const type = String(tt.type || "").toLowerCase();
+    if (!type) continue;
+    const min = Number.isFinite(Number(tt.min)) ? Number(tt.min) : null;
+    const max = Number.isFinite(Number(tt.max)) ? Number(tt.max) : null;
+    if (min == null && max == null) continue;
+    perCategory[type] = {
+      ...(min != null ? { min } : {}),
+      ...(max != null ? { max } : {}),
+    };
+  }
+
+  if (minPax == null && maxPax == null && Object.keys(perCategory).length === 0) {
+    return null;
+  }
+
+  return { minPax, maxPax, perCategory };
+}
+
+/**
+ * @param {Array<{ category?: string, quantity?: number }>} ticketBreakdown
+ * @param {{ minPax: number|null, maxPax: number|null, perCategory: Record<string, { min?: number, max?: number }> }} constraints
+ * @returns {{ ok: boolean, message: string }}
+ */
+export function validateTicketSelectionAgainstPaxConstraints(ticketBreakdown, constraints) {
+  if (!constraints) return { ok: true, message: "" };
+
+  const breakdown = Array.isArray(ticketBreakdown) ? ticketBreakdown : [];
+
+  const qtyFor = (cat) => {
+    const key = String(cat || "").toLowerCase();
+    const row = breakdown.find((e) => String(e.category || "").toLowerCase() === key);
+    return row ? Math.max(0, Number(row.quantity) || 0) : 0;
+  };
+
+  for (const [cat, rule] of Object.entries(constraints.perCategory)) {
+    const q = qtyFor(cat);
+    if (Number.isFinite(rule.min) && q < rule.min) {
+      return {
+        ok: false,
+        message: `This product requires at least ${rule.min} ${cat} ticket(s).`,
+      };
+    }
+    if (Number.isFinite(rule.max) && q > rule.max) {
+      return {
+        ok: false,
+        message: `Too many ${cat} tickets (maximum ${rule.max}).`,
+      };
+    }
+  }
+
+  const total = breakdown.reduce((sum, e) => sum + (Math.max(0, Number(e.quantity) || 0)), 0);
+  if (Number.isFinite(constraints.minPax) && total < constraints.minPax) {
+    return {
+      ok: false,
+      message: `This product requires at least ${constraints.minPax} guest(s) in total.`,
+    };
+  }
+  if (Number.isFinite(constraints.maxPax) && total > constraints.maxPax) {
+    return {
+      ok: false,
+      message: `This product allows at most ${constraints.maxPax} guest(s) in total.`,
+    };
+  }
+
+  return { ok: true, message: "" };
+}
