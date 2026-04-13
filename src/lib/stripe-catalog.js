@@ -30,7 +30,7 @@ export const STRIPE_PRICE_MAP = {
   "ac6a2b69-a014-5c50-806c-2cbda706e019:f627cfb7-45b4-4fe6-a512-40e8285fa5e4":
     "price_1TIsUNBq3JaiOlPJNYIuRk0w",
   "ec1897a3-86fb-525c-914b-bfe39a4d5396:5f775003-4111-565d-a3d2-568e7ec57506":
-    "price_1TLim0Bq3JaiOlPJlcgQF0vRS",
+    "price_1TLim0Bq3JaiOlPJlcgQF0vR",
   "22eef52f-70a7-4140-9160-2dd0dff4d638:16359b5d-575d-46e8-947c-5941a0fef58a":
     "price_1TLioWBq3JaiOlPJd9d5VryX",
   "49d32aab-f0f1-4ee7-8c50-52ab64ac29de:20cbc3d0-cad6-4e27-869f-7375c8564255":
