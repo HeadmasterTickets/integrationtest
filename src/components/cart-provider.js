@@ -16,7 +16,15 @@ const FALLBACK_CART_CONTEXT = {
 };
 
 function getItemKey(item) {
-  return `${item.productUuid}:${item.productTypeUuid}:${item.travelDate || ""}:${item.timeslotUuid || ""}`;
+  return [
+    item.productUuid,
+    item.productTypeUuid,
+    item.travelDate || "",
+    item.timeslotUuid || "",
+    item.preferredPickupTime || "",
+    item.hotelName || "",
+    item.hotelAddress || "",
+  ].join(":");
 }
 
 function normalizeTicketBreakdown(entries) {

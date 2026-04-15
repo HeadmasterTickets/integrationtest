@@ -5,6 +5,8 @@ import { useCart } from "@/components/cart-provider";
 import { validateTicketSelectionAgainstPaxConstraints } from "@/lib/bemyguest-normalizers";
 import styles from "./add-to-cart-card.module.css";
 
+const DINNER_CRUISE_TRANSFER_PRODUCT_UUID = "22eef52f-70a7-4140-9160-2dd0dff4d638";
+
 export default function AddToCartCard({
   productUuid,
   productName,
@@ -60,6 +62,12 @@ export default function AddToCartCard({
   const [categorySelections, setCategorySelections] = useState({});
   const [added, setAdded] = useState(false);
   const [paxError, setPaxError] = useState("");
+  const [preferredPickupTime, setPreferredPickupTime] = useState("");
+  const [hotelName, setHotelName] = useState("");
+  const [hotelAddress, setHotelAddress] = useState("");
+
+  const isDinnerCruiseTransferProduct =
+    productUuid === DINNER_CRUISE_TRANSFER_PRODUCT_UUID;
 
   const selectedAvailabilityDay = useMemo(() => {
     if (!hasAvailability) return null;
@@ -283,6 +291,9 @@ export default function AddToCartCard({
       timeslotTime: selectedTimeslot?.label || "",
       quantity: totalSelectedQuantity,
       ticketBreakdown,
+      preferredPickupTime: preferredPickupTime.trim(),
+      hotelName: hotelName.trim(),
+      hotelAddress: hotelAddress.trim(),
     });
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1200);
@@ -403,6 +414,39 @@ export default function AddToCartCard({
             />
           </div>
         </div>
+      )}
+      {isDinnerCruiseTransferProduct && (
+        <div className={styles.selectorRow}>
+          <label className={styles.field}>
+            <span>Preferred Pickup Time</span>
+            <input
+              type="text"
+              value={preferredPickupTime}
+              onChange={(event) => setPreferredPickupTime(event.target.value)}
+              placeholder="e.g. 18:30"
+            />
+          </label>
+          <label className={styles.field}>
+            <span>Hotel Name</span>
+            <input
+              type="text"
+              value={hotelName}
+              onChange={(event) => setHotelName(event.target.value)}
+              placeholder="Enter hotel name"
+            />
+          </label>
+        </div>
+      )}
+      {isDinnerCruiseTransferProduct && (
+        <label className={styles.field}>
+          <span>Hotel Address</span>
+          <input
+            type="text"
+            value={hotelAddress}
+            onChange={(event) => setHotelAddress(event.target.value)}
+            placeholder="Enter hotel address"
+          />
+        </label>
       )}
       {activeCategoryAvailability.length > 0 && (
         <section className={styles.ticketMix}>

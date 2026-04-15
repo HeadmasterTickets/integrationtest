@@ -55,6 +55,9 @@ function buildCartLines(items, priceMap) {
       timeslotUuid: item.timeslotUuid || "",
       timeslotTime: item.timeslotTime || "",
       ticketBreakdown: item.ticketBreakdown || [],
+      preferred_pickup_time: item.preferredPickupTime || "",
+      hotel_name: item.hotelName || "",
+      hotel_address: item.hotelAddress || "",
       stripe_catalog_price_id: priceMap[key] || "",
     };
   });
@@ -102,6 +105,11 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const cartLines = buildCartLines(items, priceMap);
   const arrivalDate = primary.travelDate || "";
   const primaryTimeslot = getPrimaryTimeslot(items);
+  const transferDetails = {
+    preferred_pickup_time: primary.preferredPickupTime || "",
+    hotel_name: primary.hotelName || "",
+    hotel_address: primary.hotelAddress || "",
+  };
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
   const session = body?.session || {};
@@ -146,6 +154,9 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     days_until_arrival: computeDaysUntilArrival(arrivalDate),
     timeslot_uuid: body?.timeslot_uuid || primaryTimeslot.uuid,
     timeslot_time: body?.timeslot_time || primaryTimeslot.time,
+    preferred_pickup_time: body?.preferred_pickup_time || transferDetails.preferred_pickup_time,
+    hotel_name: body?.hotel_name || transferDetails.hotel_name,
+    hotel_address: body?.hotel_address || transferDetails.hotel_address,
     adults,
     children,
     infants,
@@ -266,6 +277,9 @@ function normalizeItems(items) {
         travelDate: item?.travelDate || "",
         timeslotUuid: item?.timeslotUuid || "",
         timeslotTime: item?.timeslotTime || "",
+        preferredPickupTime: item?.preferredPickupTime || "",
+        hotelName: item?.hotelName || "",
+        hotelAddress: item?.hotelAddress || "",
       };
     })
     .filter((item) => item.productUuid && item.productTypeUuid);

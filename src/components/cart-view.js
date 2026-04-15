@@ -61,6 +61,13 @@ export default function CartView() {
             <p>{item.productTypeName}</p>
             <p className={styles.mono}>{item.productTypeUuid}</p>
             {item.timeslotTime && <p className={styles.mono}>Timeslot: {item.timeslotTime}</p>}
+            {item.preferredPickupTime && (
+              <p className={styles.mono}>Preferred pickup time: {item.preferredPickupTime}</p>
+            )}
+            {item.hotelName && <p className={styles.mono}>Hotel name: {item.hotelName}</p>}
+            {item.hotelAddress && (
+              <p className={styles.mono}>Hotel address: {item.hotelAddress}</p>
+            )}
             {Array.isArray(item.ticketBreakdown) && item.ticketBreakdown.length > 0 && (
               <ul className={styles.breakdown}>
                 {item.ticketBreakdown.map((entry) => (
