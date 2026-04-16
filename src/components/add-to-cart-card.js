@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCart } from "@/components/cart-provider";
 import { validateTicketSelectionAgainstPaxConstraints } from "@/lib/bemyguest-normalizers";
 import styles from "./add-to-cart-card.module.css";
+
+const DEFAULT_GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+];
 
 function isEmptyOptionValue(value) {
   return value === null || value === undefined || String(value).trim() === "";
@@ -34,6 +39,7 @@ function toScopeLabel(scope) {
 function toOptionHint(option) {
   const bits = [];
   if (option?.description) bits.push(option.description);
+  if (option?.semanticType === "dob") bits.push("Select date of birth (YYYY-MM-DD)");
   if (option?.inputType === "time") bits.push("Format: HH:MM");
   if (option?.inputType === "number") {
     if (Number.isFinite(option?.minNumber)) bits.push(`Min ${option.minNumber}`);
@@ -400,8 +406,7 @@ export default function AddToCartCard({
     return [...perBookingSelected, ...perPaxSelected];
   }
 
-  function validateRequiredOptions() {
-    if (requiredOptions.length === 0) return { ok: true, message: "" };
+  const getMissingRequiredFieldLabels = useCallback(() => {
     const missing = [];
     for (const option of requiredPerBookingOptions) {
       if (isEmptyOptionValue(optionValues[option.uuid])) {
@@ -420,6 +425,23 @@ export default function AddToCartCard({
         }
       }
     }
+    return missing;
+  }, [
+    optionValues,
+    perPaxValuesByOption,
+    requiredPerBookingOptions,
+    requiredPerPaxOptions,
+    totalSelectedQuantity,
+  ]);
+
+  const requiredDetailsComplete = useMemo(
+    () => requiredOptions.length === 0 || getMissingRequiredFieldLabels().length === 0,
+    [getMissingRequiredFieldLabels, requiredOptions.length],
+  );
+
+  function validateRequiredOptions() {
+    if (requiredOptions.length === 0) return { ok: true, message: "" };
+    const missing = getMissingRequiredFieldLabels();
     if (missing.length === 0) return { ok: true, message: "" };
     const names = missing.join(", ");
     return {
@@ -430,6 +452,12 @@ export default function AddToCartCard({
 
   function renderOptionInput(option, overrides = {}) {
     const value = overrides.value ?? optionValues[option.uuid] ?? "";
+    const selectOptions =
+      Array.isArray(option.values) && option.values.length > 0
+        ? option.values
+        : option.semanticType === "gender"
+          ? DEFAULT_GENDER_OPTIONS
+          : [];
     const commonProps = {
       value,
       required: Boolean(option.required),
@@ -437,11 +465,11 @@ export default function AddToCartCard({
         overrides.onChange || ((event) => onOptionValueChange(option.uuid, event.target.value)),
       placeholder: option.description || "",
     };
-    if (Array.isArray(option.values) && option.values.length > 0) {
+    if (selectOptions.length > 0) {
       return (
         <select {...commonProps}>
           <option value="">Select</option>
-          {option.values.map((entry) => (
+          {selectOptions.map((entry) => (
             <option key={`${option.uuid}:${entry.value || entry.label}`} value={entry.value}>
               {entry.label || entry.value}
             </option>
@@ -453,7 +481,13 @@ export default function AddToCartCard({
       return <textarea {...commonProps} rows={3} />;
     }
     const inputType =
-      option.inputType === "time" ? "time" : option.inputType === "number" ? "number" : "text";
+      option.semanticType === "dob"
+        ? "date"
+        : option.inputType === "time"
+          ? "time"
+          : option.inputType === "number"
+            ? "number"
+            : "text";
     return (
       <input
         {...commonProps}
@@ -610,13 +644,29 @@ export default function AddToCartCard({
       {requiredOptions.length > 0 && (
         <button
           type="button"
-          className={styles.manageOptionsButton}
+          className={`${styles.manageOptionsButton} ${
+            requiredDetailsComplete ? styles.manageOptionsButtonComplete : ""
+          }`}
           onClick={() => {
             setOptionError("");
             setShowOptionsModal(true);
           }}
+          aria-label={
+            requiredDetailsComplete
+              ? "Additional booking details complete. Open to edit."
+              : `Add required booking details, ${requiredOptions.length} field group(s)`
+          }
         >
-          Add required details ({requiredOptions.length})
+          {requiredDetailsComplete ? (
+            <>
+              <span className={styles.completionCheck} aria-hidden="true">
+                ✓
+              </span>
+              <span>Additional details complete</span>
+            </>
+          ) : (
+            <span>Add required details ({requiredOptions.length})</span>
+          )}
         </button>
       )}
       {activeCategoryAvailability.length > 0 && (
@@ -813,7 +863,17 @@ export default function AddToCartCard({
         >
           <div className={styles.modalCard}>
             <div className={styles.modalHeader}>
-              <h3>Required booking details</h3>
+              <div className={styles.modalTitleRow}>
+                <h3>Required booking details</h3>
+                {requiredDetailsComplete ? (
+                  <span className={styles.completionBadge}>
+                    <span className={styles.completionBadgeIcon} aria-hidden="true">
+                      ✓
+                    </span>
+                    Complete
+                  </span>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => setShowOptionsModal(false)}

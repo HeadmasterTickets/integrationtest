@@ -172,33 +172,54 @@ function mapOptionInputType(inputType) {
   return "text";
 }
 
+function detectOptionSemanticType(name, description) {
+  const text = `${name || ""} ${description || ""}`.toLowerCase().trim();
+  if (!text) return null;
+  if (
+    text.includes("date of birth") ||
+    text.includes("birth date") ||
+    text.includes("birthdate") ||
+    /\bdob\b/i.test(text)
+  ) {
+    return "dob";
+  }
+  if (/\bgender\b/i.test(text) || /\bsex\b/i.test(text)) {
+    return "gender";
+  }
+  return null;
+}
+
 function normalizeOptionScope(entries, scope) {
   if (!Array.isArray(entries)) return [];
-  return entries.map((option) => ({
-    scope,
-    uuid: option?.uuid || "",
-    name: pickText(option?.nameTranslated || option?.name) || "Option",
-    description:
-      pickText(option?.descriptionTranslated || option?.description) || "",
-    required: toBoolean(option?.required, false),
-    addOn: toBoolean(option?.addOn, false),
-    inputTypeCode: toNumberOrNull(option?.inputType),
-    inputType: mapOptionInputType(option?.inputType),
-    minNumber: toNumberOrNull(option?.minNumber),
-    maxNumber: toNumberOrNull(option?.maxNumber),
-    formatRegex: option?.formatRegex || "",
-    validFrom: option?.validFrom || "",
-    validTo: option?.validTo || "",
-    price: toNumberOrNull(option?.price),
-    values: Array.isArray(option?.values)
-      ? option.values
-          .map((value) => ({
-            value: value?.value || value?.uuid || "",
-            label: pickText(value?.label || value?.name) || value?.value || "",
-          }))
-          .filter((value) => value.value || value.label)
-      : [],
-  }));
+  return entries.map((option) => {
+    const name = pickText(option?.nameTranslated || option?.name) || "Option";
+    const description = pickText(option?.descriptionTranslated || option?.description) || "";
+    return {
+      scope,
+      uuid: option?.uuid || "",
+      name,
+      description,
+      semanticType: detectOptionSemanticType(name, description),
+      required: toBoolean(option?.required, false),
+      addOn: toBoolean(option?.addOn, false),
+      inputTypeCode: toNumberOrNull(option?.inputType),
+      inputType: mapOptionInputType(option?.inputType),
+      minNumber: toNumberOrNull(option?.minNumber),
+      maxNumber: toNumberOrNull(option?.maxNumber),
+      formatRegex: option?.formatRegex || "",
+      validFrom: option?.validFrom || "",
+      validTo: option?.validTo || "",
+      price: toNumberOrNull(option?.price),
+      values: Array.isArray(option?.values)
+        ? option.values
+            .map((value) => ({
+              value: value?.value || value?.uuid || "",
+              label: pickText(value?.label || value?.name) || value?.value || "",
+            }))
+            .filter((value) => value.value || value.label)
+        : [],
+    };
+  });
 }
 
 export function normalizeProductTypeOptions(productTypePayload) {
