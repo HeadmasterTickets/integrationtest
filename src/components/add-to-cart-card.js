@@ -39,7 +39,17 @@ function toScopeLabel(scope) {
 function toOptionHint(option) {
   const bits = [];
   if (option?.description) bits.push(option.description);
+  if (option?.bmgFormatHint) bits.push(option.bmgFormatHint);
   if (option?.semanticType === "dob") bits.push("Select date of birth (YYYY-MM-DD)");
+  if (option?.semanticType === "passport_expiry") {
+    const hasBmgGuidance =
+      Boolean(option?.description?.trim()) ||
+      Boolean(option?.bmgFormatHint) ||
+      Boolean(option?.formatRegex);
+    if (!hasBmgGuidance) {
+      bits.push("Enter the expiry date as requested by BeMyGuest (often DD/MM/YYYY with slashes).");
+    }
+  }
   if (option?.inputType === "time") bits.push("Format: HH:MM");
   if (option?.inputType === "number") {
     if (Number.isFinite(option?.minNumber)) bits.push(`Min ${option.minNumber}`);
@@ -480,6 +490,27 @@ export default function AddToCartCard({
     if (option.inputType === "textarea") {
       return <textarea {...commonProps} rows={3} />;
     }
+    if (option.semanticType === "passport_expiry") {
+      const passportPlaceholder =
+        option.description?.trim() ||
+        (option.bmgFormatHint?.includes("YYYY-MM-DD")
+          ? "YYYY-MM-DD"
+          : option.bmgFormatHint?.includes("DD/MM/YYYY")
+            ? "DD/MM/YYYY"
+            : option.bmgFormatHint?.includes("DD-MM-YYYY")
+              ? "DD-MM-YYYY"
+              : "") ||
+        "DD/MM/YYYY";
+      return (
+        <input
+          {...commonProps}
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          placeholder={passportPlaceholder}
+        />
+      );
+    }
     const inputType =
       option.semanticType === "dob"
         ? "date"
@@ -488,6 +519,10 @@ export default function AddToCartCard({
           : option.inputType === "number"
             ? "number"
             : "text";
+    const applyFormatRegex =
+      option.inputType === "text" &&
+      option.formatRegex &&
+      option.semanticType !== "passport_expiry";
     return (
       <input
         {...commonProps}
@@ -495,7 +530,7 @@ export default function AddToCartCard({
         min={option.inputType === "number" && Number.isFinite(option.minNumber) ? option.minNumber : undefined}
         max={option.inputType === "number" && Number.isFinite(option.maxNumber) ? option.maxNumber : undefined}
         step={option.inputType === "number" ? "1" : undefined}
-        pattern={option.inputType === "text" && option.formatRegex ? option.formatRegex : undefined}
+        pattern={applyFormatRegex ? option.formatRegex : undefined}
       />
     );
   }

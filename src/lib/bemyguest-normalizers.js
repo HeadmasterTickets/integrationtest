@@ -172,9 +172,47 @@ function mapOptionInputType(inputType) {
   return "text";
 }
 
+/**
+ * Turns BMG `formatRegex` into short user-facing copy when we recognize the pattern.
+ */
+function humanizeBmgFormatRegex(formatRegex) {
+  if (!formatRegex || typeof formatRegex !== "string") return "";
+  const compact = formatRegex.replace(/\s/g, "");
+  if (/\\d\{2\}\/\\d\{2\}\/\\d\{4\}/.test(compact)) {
+    return "Use DD/MM/YYYY with slashes (e.g. 15/03/2028).";
+  }
+  if (/\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(compact)) {
+    return "Use YYYY-MM-DD with hyphens (e.g. 2028-03-15).";
+  }
+  if (/\\d\{2\}-\\d\{2\}-\\d\{4\}/.test(compact)) {
+    return "Use DD-MM-YYYY with hyphens (e.g. 15-03-2028).";
+  }
+  if (/\\d\{8\}/.test(compact)) {
+    return "Use 8 digits with no separators if required (often DDMMYYYY).";
+  }
+  return "";
+}
+
+function buildBmgFormatHint(formatRegex) {
+  return humanizeBmgFormatRegex(formatRegex);
+}
+
 function detectOptionSemanticType(name, description) {
   const text = `${name || ""} ${description || ""}`.toLowerCase().trim();
   if (!text) return null;
+  // Passport / visa / travel-document expiry: free-text dates (DD/MM/YYYY with slashes), not native date input.
+  const expiryContext =
+    /\bpassport\b/i.test(text) ||
+    /\bvisa\b/i.test(text) ||
+    /\btravel\s*document\b/i.test(text);
+  const expiryWord =
+    text.includes("expir") ||
+    text.includes("expiration") ||
+    text.includes("expiry") ||
+    /\bvalid\s*(until|to|thru|through)\b/i.test(text);
+  if (expiryContext && expiryWord) {
+    return "passport_expiry";
+  }
   if (
     text.includes("date of birth") ||
     text.includes("birth date") ||
@@ -207,6 +245,7 @@ function normalizeOptionScope(entries, scope) {
       minNumber: toNumberOrNull(option?.minNumber),
       maxNumber: toNumberOrNull(option?.maxNumber),
       formatRegex: option?.formatRegex || "",
+      bmgFormatHint: buildBmgFormatHint(option?.formatRegex || ""),
       validFrom: option?.validFrom || "",
       validTo: option?.validTo || "",
       price: toNumberOrNull(option?.price),
