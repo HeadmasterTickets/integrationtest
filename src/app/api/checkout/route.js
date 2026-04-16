@@ -55,7 +55,6 @@ function buildCartLines(items, priceMap) {
       timeslotUuid: item.timeslotUuid || "",
       timeslotTime: item.timeslotTime || "",
       ticketBreakdown: item.ticketBreakdown || [],
-      selected_options: item.selectedOptions || [],
       stripe_catalog_price_id: priceMap[key] || "",
     };
   });
@@ -76,27 +75,100 @@ function flattenSelectedOptions(items) {
   });
 }
 
-function groupOptionsByScope(items) {
+function normalizeCanonicalOptionEntry(entry) {
+  return {
+    uuid: entry?.uuid || "",
+    scope: entry?.scope || "per_booking",
+    name: entry?.name || "",
+    value: entry?.value ?? "",
+    semanticType: entry?.semanticType || "",
+    guestIndex: Number.isFinite(Number(entry?.guestIndex)) ? Number(entry.guestIndex) : null,
+    guestLabel: entry?.guestLabel || "",
+    productUuid: entry?.productUuid || "",
+    productTypeUuid: entry?.productTypeUuid || "",
+    travelDate: entry?.travelDate || "",
+    timeslotUuid: entry?.timeslotUuid || "",
+    timeslotTime: entry?.timeslotTime || "",
+  };
+}
+
+function buildCanonicalOptions(items) {
   const all = flattenSelectedOptions(items);
+  return all
+    .map((entry) => normalizeCanonicalOptionEntry(entry))
+    .filter((entry) => entry.uuid && String(entry.value).trim() !== "");
+}
+
+function buildCompactBmgOptionsPayload(options) {
+  const lines = [];
+  const lineIdBySignature = new Map();
+  const defs = [];
+  const defIdBySignature = new Map();
+  const values = [];
+
+  for (const entry of options || []) {
+    const lineSignature = [
+      entry?.productUuid || "",
+      entry?.productTypeUuid || "",
+      entry?.travelDate || "",
+      entry?.timeslotUuid || "",
+      entry?.timeslotTime || "",
+    ].join("|");
+    let lineId = lineIdBySignature.get(lineSignature);
+    if (lineId === undefined) {
+      lineId = lines.length;
+      lineIdBySignature.set(lineSignature, lineId);
+      lines.push({
+        id: lineId,
+        p: entry?.productUuid || "",
+        pt: entry?.productTypeUuid || "",
+        d: entry?.travelDate || "",
+        ts: entry?.timeslotUuid || "",
+        tt: entry?.timeslotTime || "",
+      });
+    }
+
+    const scopeCode = entry?.scope === "per_pax" ? "x" : "b";
+    const defSignature = [
+      scopeCode,
+      entry?.uuid || "",
+      entry?.name || "",
+      entry?.semanticType || "",
+    ].join("|");
+    let defId = defIdBySignature.get(defSignature);
+    if (defId === undefined) {
+      defId = defs.length;
+      defIdBySignature.set(defSignature, defId);
+      defs.push({
+        id: defId,
+        s: scopeCode,
+        u: entry?.uuid || "",
+        n: entry?.name || "",
+        t: entry?.semanticType || "",
+      });
+    }
+
+    values.push({
+      l: lineId,
+      o: defId,
+      g: Number.isFinite(Number(entry?.guestIndex)) ? Number(entry.guestIndex) : null,
+      v: String(entry?.value ?? "").trim(),
+    });
+  }
+
+  return {
+    v: 1,
+    lines,
+    defs,
+    values,
+  };
+}
+
+function groupOptionsByScope(options) {
   const perBooking = [];
   const perPax = [];
-  for (const entry of all) {
-    const normalized = {
-      uuid: entry.uuid || "",
-      scope: entry.scope || "per_booking",
-      name: entry.name || "",
-      value: entry.value ?? "",
-      required: Boolean(entry.required),
-      inputType: entry.inputType || "text",
-      semanticType: entry.semanticType || "",
-      guestIndex: Number.isFinite(Number(entry.guestIndex)) ? Number(entry.guestIndex) : null,
-      guestLabel: entry.guestLabel || "",
-      productUuid: entry.productUuid || "",
-      productTypeUuid: entry.productTypeUuid || "",
-      travelDate: entry.travelDate || "",
-      timeslotUuid: entry.timeslotUuid || "",
-      timeslotTime: entry.timeslotTime || "",
-    };
+  for (const entry of options || []) {
+    const normalized = normalizeCanonicalOptionEntry(entry);
     if (!normalized.uuid || String(normalized.value).trim() === "") continue;
     if (normalized.scope === "per_pax") {
       perPax.push(normalized);
@@ -169,34 +241,9 @@ function deriveCustomerNamesFromBmgOptions(perBooking, perPax) {
   return { firstName: firstName || "", lastName: lastName || "" };
 }
 
-function buildBmgTravelersGrouped(perPax) {
-  const map = new Map();
-  for (const entry of perPax || []) {
-    const guestIndex = Number.isFinite(Number(entry?.guestIndex))
-      ? Number(entry.guestIndex)
-      : 0;
-    if (!map.has(guestIndex)) {
-      map.set(guestIndex, {
-        guest_index: guestIndex,
-        guest_label: entry?.guestLabel || `Guest ${guestIndex + 1}`,
-        options: [],
-      });
-    }
-    map.get(guestIndex).options.push({
-      uuid: entry?.uuid || "",
-      name: entry?.name || "",
-      value: String(entry?.value ?? "").trim(),
-      required: Boolean(entry?.required),
-      inputType: entry?.inputType || "text",
-      semanticType: entry?.semanticType || "",
-    });
-  }
-  return Array.from(map.values()).sort((a, b) => a.guest_index - b.guest_index);
-}
-
 /**
  * Map common booking-option labels to top-level hotel / transfer fields for systems
- * that only read those keys. All raw rows remain in bmg_options_per_*.
+ * that only read those keys. All raw rows remain in bmg_options.
  */
 function extractLodgingAndTransferFromOptions(perBooking) {
   const list = perBooking || [];
@@ -316,26 +363,44 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const cartLines = buildCartLines(items, priceMap);
   const arrivalDate = primary.travelDate || "";
   const primaryTimeslot = getPrimaryTimeslot(items);
-  const groupedOptions = groupOptionsByScope(items);
-  const perBookingForPayload = Array.isArray(body?.bmg_options_per_booking)
-    ? body.bmg_options_per_booking
-    : groupedOptions.perBooking;
-  const perPaxForPayload = Array.isArray(body?.bmg_options_per_pax)
-    ? body.bmg_options_per_pax
-    : groupedOptions.perPax;
+  const canonicalOptionsFromItems = buildCanonicalOptions(items);
+  const canonicalOptionsFromBody = Array.isArray(body?.bmg_options)
+    ? body.bmg_options.map((entry) => normalizeCanonicalOptionEntry(entry))
+    : [];
+  // Backward compatibility: allow old split arrays, but collapse to one canonical structure.
+  const canonicalOptionsFromLegacyBody =
+    !canonicalOptionsFromBody.length &&
+    (Array.isArray(body?.bmg_options_per_booking) || Array.isArray(body?.bmg_options_per_pax))
+      ? [
+          ...((body?.bmg_options_per_booking || []).map((entry) =>
+            normalizeCanonicalOptionEntry({ ...entry, scope: "per_booking" }),
+          )),
+          ...((body?.bmg_options_per_pax || []).map((entry) =>
+            normalizeCanonicalOptionEntry({ ...entry, scope: "per_pax" }),
+          )),
+        ]
+      : [];
+  const canonicalOptions =
+    canonicalOptionsFromBody.length > 0
+      ? canonicalOptionsFromBody
+      : canonicalOptionsFromLegacyBody.length > 0
+        ? canonicalOptionsFromLegacyBody
+        : canonicalOptionsFromItems;
+  const groupedOptions = groupOptionsByScope(canonicalOptions);
+  const perBookingForDerivation = groupedOptions.perBooking;
+  const perPaxForDerivation = groupedOptions.perPax;
   const derivedFromBmg = deriveCustomerNamesFromBmgOptions(
-    perBookingForPayload,
-    perPaxForPayload,
+    perBookingForDerivation,
+    perPaxForDerivation,
   );
-  const bmg_travelers = buildBmgTravelersGrouped(perPaxForPayload);
   const bmg_lead_traveler_display_name = deriveLeadTravelerDisplayName(
     derivedFromBmg.firstName,
     derivedFromBmg.lastName,
-    perBookingForPayload,
-    perPaxForPayload,
+    perBookingForDerivation,
+    perPaxForDerivation,
   );
-  const transferDetails = extractLodgingAndTransferFromOptions(perBookingForPayload);
-  const bmg_all_product_options = [...perBookingForPayload, ...perPaxForPayload];
+  const transferDetails = extractLodgingAndTransferFromOptions(perBookingForDerivation);
+  const bmg_options = buildCompactBmgOptionsPayload(canonicalOptions);
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
   const session = body?.session || {};
@@ -422,12 +487,9 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     session_duration_seconds: asNumber(session.session_duration_seconds, 0),
     cancellation_policy: body?.cancellation_policy || "",
     is_non_refundable: Boolean(body?.is_non_refundable || false),
-    bmg_options_per_booking: perBookingForPayload,
-    bmg_options_per_pax: perPaxForPayload,
-    /** Single list of every product option row (per-booking then per-pax) for fulfillment. */
-    bmg_all_product_options,
+    /** Canonical additional-field payload consumed by fulfillment. */
+    bmg_options,
     bmg_lead_traveler_display_name,
-    bmg_travelers,
     meeting_point: body?.meeting_point || "",
     support_email: body?.support_email || "",
     operator_name: body?.operator_name || "",
@@ -447,8 +509,32 @@ function createStripeMetadata(schemaPayload) {
   const payloadJson = JSON.stringify(schemaPayload);
   const chunks = splitIntoMetadataChunks(payloadJson);
   if (METADATA_RESERVED_KEYS + chunks.length > METADATA_MAX_KEYS) {
+    const sectionSizes = [
+      ["bmg_options", JSON.stringify(schemaPayload?.bmg_options || []).length],
+      ["cart", JSON.stringify(schemaPayload?.cart || []).length],
+      ["pricing", JSON.stringify({
+        order_amount_eur: schemaPayload?.order_amount_eur,
+        adult_price_eur: schemaPayload?.adult_price_eur,
+        child_price_eur: schemaPayload?.child_price_eur,
+        bmg_total_cost_sgd: schemaPayload?.bmg_total_cost_sgd,
+        bmg_total_cost_eur: schemaPayload?.bmg_total_cost_eur,
+      }).length],
+      ["tracking", JSON.stringify({
+        utm_source: schemaPayload?.utm_source,
+        utm_medium: schemaPayload?.utm_medium,
+        utm_campaign: schemaPayload?.utm_campaign,
+        utm_content: schemaPayload?.utm_content,
+        utm_term: schemaPayload?.utm_term,
+        gclid: schemaPayload?.gclid,
+        landing_page: schemaPayload?.landing_page,
+        referrer_url: schemaPayload?.referrer_url,
+      }).length],
+    ]
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, size]) => `${key}:${size}b`)
+      .join(", ");
     throw new Error(
-      `Booking metadata too large for Stripe (${chunks.length} chunks; max ${METADATA_MAX_KEYS - METADATA_RESERVED_KEYS}). Shorten cart or optional fields.`,
+      `Booking metadata too large for Stripe (${chunks.length} chunks; max ${METADATA_MAX_KEYS - METADATA_RESERVED_KEYS}). payload_bytes=${payloadJson.length}; top_sections=${sectionSizes}. Shorten cart or optional fields.`,
     );
   }
 
