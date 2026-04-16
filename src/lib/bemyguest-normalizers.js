@@ -7,6 +7,82 @@ export function pickText(value) {
   return null;
 }
 
+function toNumberOrNull(value) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function toBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (value === null || value === undefined) return fallback;
+  return Boolean(value);
+}
+
+function splitMultilineText(value) {
+  if (!value || typeof value !== "string") return [];
+  return value
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function formatDuration(hours, minutes) {
+  const h = toNumberOrNull(hours) || 0;
+  const m = toNumberOrNull(minutes) || 0;
+  if (h <= 0 && m <= 0) return "";
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+function normalizeLocationList(payload) {
+  const locations = Array.isArray(payload?.data?.locations) ? payload.data.locations : [];
+  return locations
+    .map((location) => {
+      const pieces = [location?.city, location?.state, location?.country].filter(Boolean);
+      return {
+        city: location?.city || "",
+        state: location?.state || "",
+        country: location?.country || "",
+        label: pieces.join(", "),
+      };
+    })
+    .filter((location) => location.label);
+}
+
+function normalizeLanguageLabels(payload, key) {
+  const items = Array.isArray(payload?.data?.[key]) ? payload.data[key] : [];
+  return items
+    .map((entry) => pickText(entry?.name) || "")
+    .filter(Boolean)
+    .map((label) =>
+      label
+        .replace(/[_-]+/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase()),
+    );
+}
+
+function normalizePhotoUrls(payload) {
+  const data = payload?.data || {};
+  const photosUrl = data?.photosUrl || "";
+  const photos = Array.isArray(data?.photos) ? data.photos : [];
+  return photos
+    .map((photo) => {
+      const paths = photo?.paths || {};
+      const preferred =
+        paths["1280x720"] ||
+        paths["680x325"] ||
+        paths["175x112"] ||
+        paths["75x50"] ||
+        paths.original ||
+        "";
+      if (!preferred) return "";
+      if (preferred.startsWith("http://") || preferred.startsWith("https://")) return preferred;
+      return photosUrl ? `${photosUrl}${preferred}` : preferred;
+    })
+    .filter(Boolean);
+}
+
 export function pickProductName(payload) {
   return (
     pickText(
@@ -49,6 +125,155 @@ export function normalizeProductLocations(payload) {
     country: location?.country || "Unknown country",
     countryUuid: location?.countryUuid || "",
   }));
+}
+
+export function normalizeProductConsumerDetails(productPayload) {
+  const data = productPayload?.data || {};
+  const currency = data?.currency || {};
+  return {
+    title: pickProductName(productPayload),
+    shortDescription: pickText(data?.descriptionTranslated || data?.description) || "",
+    highlights: splitMultilineText(data?.highlightsTranslated || data?.highlights),
+    additionalInfo: splitMultilineText(data?.additionalInfoTranslated || data?.additionalInfo),
+    inclusions: splitMultilineText(data?.priceIncludesTranslated || data?.priceIncludes),
+    exclusions: splitMultilineText(data?.priceExcludesTranslated || data?.priceExcludes),
+    warnings: splitMultilineText(data?.warningsTranslated || data?.warnings),
+    itinerary: splitMultilineText(data?.itineraryTranslated || data?.itinerary),
+    safety: splitMultilineText(data?.safetyTranslated || data?.safety),
+    basePrice: toNumberOrNull(data?.basePrice),
+    currencyCode: currency?.code || "",
+    currencySymbol: currency?.symbol || "",
+    minPax: toNumberOrNull(data?.minPax),
+    maxPax: toNumberOrNull(data?.maxPax),
+    averageDeliveryMinutes: toNumberOrNull(data?.averageDelivery),
+    businessHoursFrom: data?.businessHoursFrom || "",
+    businessHoursTo: data?.businessHoursTo || "",
+    address: data?.address || "",
+    coordinates:
+      data?.latitude && data?.longitude ? `${data.latitude}, ${data.longitude}` : "",
+    locations: normalizeLocationList(productPayload),
+    guideLanguages: normalizeLanguageLabels(productPayload, "guideLanguages"),
+    audioLanguages: normalizeLanguageLabels(productPayload, "audioHeadsetLanguages"),
+    writtenLanguages: normalizeLanguageLabels(productPayload, "writtenLanguages"),
+    translatedLanguages: normalizeLanguageLabels(productPayload, "translationLanguages"),
+    hasHotelPickup: toBoolean(data?.hotelPickup, false),
+    hasAirportPickup: toBoolean(data?.airportPickup, false),
+    images: normalizePhotoUrls(productPayload),
+  };
+}
+
+function mapOptionInputType(inputType) {
+  // BMG option inputType values seen in demo APIs:
+  // 4=text, 9=textarea-like, 10=time.
+  const code = toNumberOrNull(inputType);
+  if (code === 10) return "time";
+  if (code === 9) return "textarea";
+  if (code === 5 || code === 6 || code === 7) return "number";
+  return "text";
+}
+
+function normalizeOptionScope(entries, scope) {
+  if (!Array.isArray(entries)) return [];
+  return entries.map((option) => ({
+    scope,
+    uuid: option?.uuid || "",
+    name: pickText(option?.nameTranslated || option?.name) || "Option",
+    description:
+      pickText(option?.descriptionTranslated || option?.description) || "",
+    required: toBoolean(option?.required, false),
+    addOn: toBoolean(option?.addOn, false),
+    inputTypeCode: toNumberOrNull(option?.inputType),
+    inputType: mapOptionInputType(option?.inputType),
+    minNumber: toNumberOrNull(option?.minNumber),
+    maxNumber: toNumberOrNull(option?.maxNumber),
+    formatRegex: option?.formatRegex || "",
+    validFrom: option?.validFrom || "",
+    validTo: option?.validTo || "",
+    price: toNumberOrNull(option?.price),
+    values: Array.isArray(option?.values)
+      ? option.values
+          .map((value) => ({
+            value: value?.value || value?.uuid || "",
+            label: pickText(value?.label || value?.name) || value?.value || "",
+          }))
+          .filter((value) => value.value || value.label)
+      : [],
+  }));
+}
+
+export function normalizeProductTypeOptions(productTypePayload) {
+  const data = productTypePayload?.data || {};
+  const perBooking = normalizeOptionScope(data?.options?.perBooking, "per_booking");
+  const perPax = normalizeOptionScope(data?.options?.perPax, "per_pax");
+  return {
+    hasOptions: toBoolean(data?.hasOptions, false),
+    hasFileUploadOptions: toBoolean(data?.hasFileUploadOptions, false),
+    hasPriceOptions: toBoolean(data?.hasPriceOptions, false),
+    hasRequiredPriceOptions: toBoolean(data?.hasRequiredPriceOptions, false),
+    perBooking,
+    perPax,
+    requiredPerBooking: perBooking.filter((option) => option.required),
+    requiredPerPax: perPax.filter((option) => option.required),
+    all: [...perBooking, ...perPax],
+  };
+}
+
+export function normalizeProductTypeCommercialDetails(productTypePayload) {
+  const data = productTypePayload?.data || {};
+  const ticketTypes = Array.isArray(data?.ticketTypes)
+    ? data.ticketTypes.filter((ticketType) => ticketType?.allowed)
+    : [];
+
+  const recommendedMarkup = toNumberOrNull(data?.recommendedMarkup);
+  const topTicketMarkup = ticketTypes
+    .map((ticketType) => toNumberOrNull(ticketType?.recommendedMarkup))
+    .find((value) => value !== null);
+  const displayMarkup = recommendedMarkup ?? topTicketMarkup;
+
+  const durationLabel = formatDuration(data?.durationHours, data?.durationMinutes);
+
+  return {
+    title: pickText(data?.titleTranslated || data?.title) || "",
+    description: pickText(data?.descriptionTranslated || data?.description) || "",
+    durationDays: toNumberOrNull(data?.durationDays),
+    durationHours: toNumberOrNull(data?.durationHours),
+    durationMinutes: toNumberOrNull(data?.durationMinutes),
+    durationLabel,
+    firstAvailabilityDate: data?.firstAvailabilityDate || "",
+    timezone: data?.timezone || "",
+    instantConfirmation: toBoolean(data?.instantConfirmation, false),
+    directAdmission: toBoolean(data?.directAdmission, false),
+    voucherRequiresPrinting: toBoolean(data?.voucherRequiresPrinting, false),
+    isNonRefundable: toBoolean(data?.isNonRefundable, false),
+    cancellationPolicySummary: data?.cancellationPolicySummary || "",
+    meetingLocation:
+      pickText(data?.meetingLocationTranslated || data?.meetingLocation) || "",
+    meetingAddress:
+      pickText(data?.meetingAddressTranslated || data?.meetingAddress) || "",
+    meetingTime: data?.meetingTime || "",
+    minPax: toNumberOrNull(data?.minPax),
+    maxPax: toNumberOrNull(data?.maxPax),
+    minGroup: toNumberOrNull(data?.minGroup),
+    maxGroup: toNumberOrNull(data?.maxGroup),
+    daysInAdvance: toNumberOrNull(data?.daysInAdvance),
+    cutOffTime: data?.cutOffTime || "",
+    recommendedMarkup: displayMarkup,
+    childRecommendedMarkup: toNumberOrNull(data?.childRecommendedMarkup),
+    seniorRecommendedMarkup: toNumberOrNull(data?.seniorRecommendedMarkup),
+    adultGateRatePrice: toNumberOrNull(data?.adultGateRatePrice),
+    childGateRatePrice: toNumberOrNull(data?.childGateRatePrice),
+    seniorGateRatePrice: toNumberOrNull(data?.seniorGateRatePrice),
+    ticketTypes: ticketTypes.map((ticketType) => ({
+      type: String(ticketType?.type || "").toLowerCase(),
+      label: ticketType?.label || "",
+      min: toNumberOrNull(ticketType?.min),
+      max: toNumberOrNull(ticketType?.max),
+      minAge: toNumberOrNull(ticketType?.minAge),
+      maxAge: toNumberOrNull(ticketType?.maxAge),
+      recommendedMarkup: toNumberOrNull(ticketType?.recommendedMarkup),
+      gateRatePrice: toNumberOrNull(ticketType?.gateRatePrice),
+    })),
+  };
 }
 
 function formatTimeslotLabel(startTime, endTime) {

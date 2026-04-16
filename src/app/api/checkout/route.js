@@ -55,12 +55,53 @@ function buildCartLines(items, priceMap) {
       timeslotUuid: item.timeslotUuid || "",
       timeslotTime: item.timeslotTime || "",
       ticketBreakdown: item.ticketBreakdown || [],
-      preferred_pickup_time: item.preferredPickupTime || "",
-      hotel_name: item.hotelName || "",
-      hotel_address: item.hotelAddress || "",
+      selected_options: item.selectedOptions || [],
       stripe_catalog_price_id: priceMap[key] || "",
     };
   });
+}
+
+function flattenSelectedOptions(items) {
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item) => {
+    const options = Array.isArray(item?.selectedOptions) ? item.selectedOptions : [];
+    return options.map((entry) => ({
+      ...entry,
+      productUuid: item.productUuid || "",
+      productTypeUuid: item.productTypeUuid || "",
+      travelDate: item.travelDate || "",
+      timeslotUuid: item.timeslotUuid || "",
+      timeslotTime: item.timeslotTime || "",
+    }));
+  });
+}
+
+function groupOptionsByScope(items) {
+  const all = flattenSelectedOptions(items);
+  const perBooking = [];
+  const perPax = [];
+  for (const entry of all) {
+    const normalized = {
+      uuid: entry.uuid || "",
+      scope: entry.scope || "per_booking",
+      name: entry.name || "",
+      value: entry.value ?? "",
+      guestIndex: Number.isFinite(Number(entry.guestIndex)) ? Number(entry.guestIndex) : null,
+      guestLabel: entry.guestLabel || "",
+      productUuid: entry.productUuid || "",
+      productTypeUuid: entry.productTypeUuid || "",
+      travelDate: entry.travelDate || "",
+      timeslotUuid: entry.timeslotUuid || "",
+      timeslotTime: entry.timeslotTime || "",
+    };
+    if (!normalized.uuid || String(normalized.value).trim() === "") continue;
+    if (normalized.scope === "per_pax") {
+      perPax.push(normalized);
+    } else {
+      perBooking.push(normalized);
+    }
+  }
+  return { perBooking, perPax };
 }
 
 function getTicketCountByCategory(ticketBreakdown, category) {
@@ -105,10 +146,16 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const cartLines = buildCartLines(items, priceMap);
   const arrivalDate = primary.travelDate || "";
   const primaryTimeslot = getPrimaryTimeslot(items);
+  const groupedOptions = groupOptionsByScope(items);
+  const firstPerBookingOptionValue = (matcher) =>
+    groupedOptions.perBooking.find((entry) => matcher(entry))?.value || "";
+
   const transferDetails = {
-    preferred_pickup_time: primary.preferredPickupTime || "",
-    hotel_name: primary.hotelName || "",
-    hotel_address: primary.hotelAddress || "",
+    preferred_pickup_time: firstPerBookingOptionValue((entry) =>
+      /pickup|pick-up|preferred/i.test(entry.name),
+    ),
+    hotel_name: firstPerBookingOptionValue((entry) => /hotel\s*name/i.test(entry.name)),
+    hotel_address: firstPerBookingOptionValue((entry) => /hotel\s*address/i.test(entry.name)),
   };
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
@@ -198,10 +245,10 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     is_non_refundable: Boolean(body?.is_non_refundable || false),
     bmg_options_per_booking: Array.isArray(body?.bmg_options_per_booking)
       ? body.bmg_options_per_booking
-      : [],
+      : groupedOptions.perBooking,
     bmg_options_per_pax: Array.isArray(body?.bmg_options_per_pax)
       ? body.bmg_options_per_pax
-      : [],
+      : groupedOptions.perPax,
     meeting_point: body?.meeting_point || "",
     support_email: body?.support_email || "",
     operator_name: body?.operator_name || "",
@@ -266,8 +313,59 @@ function normalizeItems(items) {
         : [];
       const breakdownTotal = ticketBreakdown.reduce((sum, entry) => sum + entry.quantity, 0);
 
+      const selectedOptions = Array.isArray(item?.selectedOptions)
+        ? item.selectedOptions
+            .map((entry) => ({
+              uuid: entry?.uuid || "",
+              scope: entry?.scope || "per_booking",
+              name: entry?.name || "",
+              required: Boolean(entry?.required),
+              inputType: entry?.inputType || "text",
+              value: entry?.value ?? "",
+              guestIndex:
+                Number.isFinite(Number(entry?.guestIndex)) ? Number(entry.guestIndex) : null,
+              guestLabel: entry?.guestLabel || "",
+            }))
+            .filter((entry) => entry.uuid && String(entry.value).trim() !== "")
+        : [];
+
+      // Backwards compatibility for cart rows created before API-driven options.
+      if (selectedOptions.length === 0) {
+        if (item?.preferredPickupTime) {
+          selectedOptions.push({
+            uuid: "legacy-preferred-pickup-time",
+            scope: "per_booking",
+            name: "Preferred pickup time",
+            required: false,
+            inputType: "text",
+            value: item.preferredPickupTime,
+          });
+        }
+        if (item?.hotelName) {
+          selectedOptions.push({
+            uuid: "legacy-hotel-name",
+            scope: "per_booking",
+            name: "Hotel name",
+            required: false,
+            inputType: "text",
+            value: item.hotelName,
+          });
+        }
+        if (item?.hotelAddress) {
+          selectedOptions.push({
+            uuid: "legacy-hotel-address",
+            scope: "per_booking",
+            name: "Hotel address",
+            required: false,
+            inputType: "text",
+            value: item.hotelAddress,
+          });
+        }
+      }
+
       return {
         ticketBreakdown,
+        selectedOptions,
         productUuid: item?.productUuid,
         productTypeUuid: item?.productTypeUuid,
         quantity:
@@ -277,9 +375,6 @@ function normalizeItems(items) {
         travelDate: item?.travelDate || "",
         timeslotUuid: item?.timeslotUuid || "",
         timeslotTime: item?.timeslotTime || "",
-        preferredPickupTime: item?.preferredPickupTime || "",
-        hotelName: item?.hotelName || "",
-        hotelAddress: item?.hotelAddress || "",
       };
     })
     .filter((item) => item.productUuid && item.productTypeUuid);

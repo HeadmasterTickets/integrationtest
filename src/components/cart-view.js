@@ -61,12 +61,29 @@ export default function CartView() {
             <p>{item.productTypeName}</p>
             <p className={styles.mono}>{item.productTypeUuid}</p>
             {item.timeslotTime && <p className={styles.mono}>Timeslot: {item.timeslotTime}</p>}
-            {item.preferredPickupTime && (
-              <p className={styles.mono}>Preferred pickup time: {item.preferredPickupTime}</p>
-            )}
-            {item.hotelName && <p className={styles.mono}>Hotel name: {item.hotelName}</p>}
-            {item.hotelAddress && (
-              <p className={styles.mono}>Hotel address: {item.hotelAddress}</p>
+            {Array.isArray(item.selectedOptions) && item.selectedOptions.length > 0 && (
+              <div className={styles.optionsWrap}>
+                <p className={styles.optionsTitle}>Booking details</p>
+                <ul className={styles.optionsList}>
+                  {item.selectedOptions.map((option) => (
+                    <li
+                      key={`${item.productUuid}:${option.uuid}:${
+                        Number.isFinite(Number(option.guestIndex))
+                          ? Number(option.guestIndex)
+                          : "single"
+                      }`}
+                    >
+                      <span>
+                        {option.name}
+                        {Number.isFinite(Number(option.guestIndex))
+                          ? ` (${option.guestLabel || `Guest ${Number(option.guestIndex) + 1}`})`
+                          : ""}
+                      </span>
+                      <span>{option.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             {Array.isArray(item.ticketBreakdown) && item.ticketBreakdown.length > 0 && (
               <ul className={styles.breakdown}>

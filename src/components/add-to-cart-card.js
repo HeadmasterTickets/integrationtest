@@ -1,11 +1,49 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCart } from "@/components/cart-provider";
 import { validateTicketSelectionAgainstPaxConstraints } from "@/lib/bemyguest-normalizers";
 import styles from "./add-to-cart-card.module.css";
 
-const DINNER_CRUISE_TRANSFER_PRODUCT_UUID = "22eef52f-70a7-4140-9160-2dd0dff4d638";
+function isEmptyOptionValue(value) {
+  return value === null || value === undefined || String(value).trim() === "";
+}
+
+function toLabel(option) {
+  return option?.name || "Required field";
+}
+
+function formatDateLabel(dateValue, weekday) {
+  if (!dateValue) return "Select date";
+  const date = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateValue;
+  const label = date.toLocaleDateString("en-SG", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  return weekday ? `${label} (${weekday})` : label;
+}
+
+function toScopeLabel(scope) {
+  if (scope === "per_pax") return "Per guest";
+  return "Per booking";
+}
+
+function toOptionHint(option) {
+  const bits = [];
+  if (option?.description) bits.push(option.description);
+  if (option?.inputType === "time") bits.push("Format: HH:MM");
+  if (option?.inputType === "number") {
+    if (Number.isFinite(option?.minNumber)) bits.push(`Min ${option.minNumber}`);
+    if (Number.isFinite(option?.maxNumber)) bits.push(`Max ${option.maxNumber}`);
+  }
+  if (Array.isArray(option?.values) && option.values.length > 0) {
+    bits.push(`Choices: ${option.values.map((entry) => entry.label || entry.value).join(", ")}`);
+  }
+  return bits.join(" · ");
+}
 
 export default function AddToCartCard({
   productUuid,
@@ -14,6 +52,15 @@ export default function AddToCartCard({
   productTypeName,
   availabilityDays = [],
   paxConstraints = null,
+  optionDefinitions = {
+    perBooking: [],
+    perPax: [],
+    all: [],
+    requiredPerBooking: [],
+    requiredPerPax: [],
+  },
+  pricingContext = null,
+  variantContext = null,
 }) {
   const { addItem, isAvailable } = useCart();
   const sortedAvailabilityDaysRaw = useMemo(
@@ -62,12 +109,39 @@ export default function AddToCartCard({
   const [categorySelections, setCategorySelections] = useState({});
   const [added, setAdded] = useState(false);
   const [paxError, setPaxError] = useState("");
-  const [preferredPickupTime, setPreferredPickupTime] = useState("");
-  const [hotelName, setHotelName] = useState("");
-  const [hotelAddress, setHotelAddress] = useState("");
+  const [optionValues, setOptionValues] = useState({});
+  const [perPaxOptionValues, setPerPaxOptionValues] = useState({});
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [showDatePopup, setShowDatePopup] = useState(false);
+  const [showTimeslotPopup, setShowTimeslotPopup] = useState(false);
+  const [optionError, setOptionError] = useState("");
 
-  const isDinnerCruiseTransferProduct =
-    productUuid === DINNER_CRUISE_TRANSFER_PRODUCT_UUID;
+  const perBookingOptions = useMemo(
+    () => (Array.isArray(optionDefinitions?.perBooking) ? optionDefinitions.perBooking : []),
+    [optionDefinitions],
+  );
+  const perPaxOptions = useMemo(
+    () => (Array.isArray(optionDefinitions?.perPax) ? optionDefinitions.perPax : []),
+    [optionDefinitions],
+  );
+  const requiredPerBookingOptions = useMemo(
+    () =>
+      Array.isArray(optionDefinitions?.requiredPerBooking)
+        ? optionDefinitions.requiredPerBooking
+        : perBookingOptions.filter((option) => option.required),
+    [optionDefinitions, perBookingOptions],
+  );
+  const requiredPerPaxOptions = useMemo(
+    () =>
+      Array.isArray(optionDefinitions?.requiredPerPax)
+        ? optionDefinitions.requiredPerPax
+        : perPaxOptions.filter((option) => option.required),
+    [optionDefinitions, perPaxOptions],
+  );
+  const requiredOptions = useMemo(
+    () => [...requiredPerBookingOptions, ...requiredPerPaxOptions],
+    [requiredPerBookingOptions, requiredPerPaxOptions],
+  );
 
   const selectedAvailabilityDay = useMemo(() => {
     if (!hasAvailability) return null;
@@ -86,6 +160,16 @@ export default function AddToCartCard({
       null
     );
   }, [selectedAvailabilityDay, timeslotUuid]);
+
+  const selectedDateLabel = useMemo(
+    () =>
+      selectedAvailabilityDay
+        ? formatDateLabel(selectedAvailabilityDay.date, selectedAvailabilityDay.weekday)
+        : formatDateLabel(travelDate, ""),
+    [selectedAvailabilityDay, travelDate],
+  );
+
+  const selectedTimeslotLabel = selectedTimeslot?.label || "Select timeslot";
 
   const activeCategoryAvailability = useMemo(() => {
     const fromTimeslot = selectedTimeslot?.categoryAvailability || [];
@@ -194,21 +278,37 @@ export default function AddToCartCard({
     [activeCategoryAvailability, categoryQuantities],
   );
 
-  const paxConstraintsHint = useMemo(() => {
-    if (!paxConstraints) return "";
-    const bits = [];
-    if (Number.isFinite(paxConstraints.minPax) && paxConstraints.minPax > 0) {
-      bits.push(`min ${paxConstraints.minPax} guest(s) total`);
+  const perPaxValuesByOption = useMemo(() => {
+    const expectedSize = Math.max(0, totalSelectedQuantity);
+    const next = {};
+    for (const option of perPaxOptions) {
+      const existing = Array.isArray(perPaxOptionValues[option.uuid])
+        ? perPaxOptionValues[option.uuid]
+        : [];
+      next[option.uuid] = Array.from({ length: expectedSize }, (_, index) => existing[index] ?? "");
     }
-    if (Number.isFinite(paxConstraints.maxPax) && paxConstraints.maxPax > 0) {
+    return next;
+  }, [perPaxOptionValues, perPaxOptions, totalSelectedQuantity]);
+
+  const paxConstraintsHint = useMemo(() => {
+    const bits = [];
+    if (Number.isFinite(paxConstraints?.minPax) && paxConstraints.minPax > 0) {
+      bits.push(`min ${paxConstraints.minPax} guest(s) total`);
+    } else if (Number.isFinite(variantContext?.minPax) && variantContext.minPax > 0) {
+      bits.push(`min ${variantContext.minPax} guest(s) total`);
+    }
+    if (Number.isFinite(paxConstraints?.maxPax) && paxConstraints.maxPax > 0) {
       bits.push(`max ${paxConstraints.maxPax} guest(s) total`);
     }
-    const adultMin = paxConstraints.perCategory?.adult?.min;
+    if (Number.isFinite(variantContext?.minGroup) && variantContext.minGroup > 0) {
+      bits.push(`min ${variantContext.minGroup} group(s)`);
+    }
+    const adultMin = paxConstraints?.perCategory?.adult?.min;
     if (Number.isFinite(adultMin) && adultMin > 0) {
       bits.push(`min ${adultMin} adult(s)`);
     }
     return bits.join(" · ");
-  }, [paxConstraints]);
+  }, [paxConstraints, variantContext]);
 
   const selectionPassesPaxRules = useMemo(() => {
     if (!paxConstraints || activeCategoryAvailability.length === 0) return true;
@@ -232,13 +332,151 @@ export default function AddToCartCard({
     return date.toLocaleString("en-US", { month: "long", year: "numeric" });
   }, [selectedMonth]);
 
-  function onDateChange(nextDate) {
+  function applyTravelDate(nextDate, closePopup = true) {
     setTravelDate(nextDate);
     setSelectedMonth(nextDate.slice(0, 7));
     if (!hasAvailability || !isAvailable) return;
     const day = sortedAvailabilityDays.find((entry) => entry.date === nextDate);
     setTimeslotUuid(day?.timeslots?.[0]?.uuid || "");
+    if (closePopup) {
+      setShowDatePopup(false);
+      setShowTimeslotPopup(false);
+    }
   }
+
+  function onDateChange(nextDate) {
+    applyTravelDate(nextDate, true);
+  }
+
+  function onOptionValueChange(optionUuid, nextValue) {
+    setOptionError("");
+    setOptionValues((prev) => ({
+      ...prev,
+      [optionUuid]: nextValue,
+    }));
+  }
+
+  function onPerPaxOptionValueChange(optionUuid, guestIndex, nextValue) {
+    setOptionError("");
+    setPerPaxOptionValues((prev) => {
+      const currentValues = Array.isArray(prev[optionUuid]) ? prev[optionUuid] : [];
+      const nextValues = [...currentValues];
+      nextValues[guestIndex] = nextValue;
+      return {
+        ...prev,
+        [optionUuid]: nextValues,
+      };
+    });
+  }
+
+  function buildSelectedOptions() {
+    const perBookingSelected = perBookingOptions
+      .map((option) => ({
+        uuid: option.uuid,
+        scope: option.scope,
+        name: option.name,
+        required: Boolean(option.required),
+        inputType: option.inputType,
+        value: optionValues[option.uuid] ?? "",
+      }))
+      .filter((entry) => !isEmptyOptionValue(entry.value));
+    const perPaxSelected = perPaxOptions.flatMap((option) => {
+      const values = Array.isArray(perPaxValuesByOption[option.uuid])
+        ? perPaxValuesByOption[option.uuid]
+        : [];
+      return values
+        .map((value, guestIndex) => ({
+          uuid: option.uuid,
+          scope: option.scope,
+          name: option.name,
+          required: Boolean(option.required),
+          inputType: option.inputType,
+          value: value ?? "",
+          guestIndex,
+          guestLabel: `Guest ${guestIndex + 1}`,
+        }))
+        .filter((entry) => !isEmptyOptionValue(entry.value));
+    });
+    return [...perBookingSelected, ...perPaxSelected];
+  }
+
+  function validateRequiredOptions() {
+    if (requiredOptions.length === 0) return { ok: true, message: "" };
+    const missing = [];
+    for (const option of requiredPerBookingOptions) {
+      if (isEmptyOptionValue(optionValues[option.uuid])) {
+        missing.push(toLabel(option));
+      }
+    }
+    if (totalSelectedQuantity > 0) {
+      for (const option of requiredPerPaxOptions) {
+        const values = Array.isArray(perPaxValuesByOption[option.uuid])
+          ? perPaxValuesByOption[option.uuid]
+          : [];
+        for (let guestIndex = 0; guestIndex < totalSelectedQuantity; guestIndex += 1) {
+          if (isEmptyOptionValue(values[guestIndex])) {
+            missing.push(`${toLabel(option)} (Guest ${guestIndex + 1})`);
+          }
+        }
+      }
+    }
+    if (missing.length === 0) return { ok: true, message: "" };
+    const names = missing.join(", ");
+    return {
+      ok: false,
+      message: `Please fill required fields: ${names}`,
+    };
+  }
+
+  function renderOptionInput(option, overrides = {}) {
+    const value = overrides.value ?? optionValues[option.uuid] ?? "";
+    const commonProps = {
+      value,
+      required: Boolean(option.required),
+      onChange:
+        overrides.onChange || ((event) => onOptionValueChange(option.uuid, event.target.value)),
+      placeholder: option.description || "",
+    };
+    if (Array.isArray(option.values) && option.values.length > 0) {
+      return (
+        <select {...commonProps}>
+          <option value="">Select</option>
+          {option.values.map((entry) => (
+            <option key={`${option.uuid}:${entry.value || entry.label}`} value={entry.value}>
+              {entry.label || entry.value}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (option.inputType === "textarea") {
+      return <textarea {...commonProps} rows={3} />;
+    }
+    const inputType =
+      option.inputType === "time" ? "time" : option.inputType === "number" ? "number" : "text";
+    return (
+      <input
+        {...commonProps}
+        type={inputType}
+        min={option.inputType === "number" && Number.isFinite(option.minNumber) ? option.minNumber : undefined}
+        max={option.inputType === "number" && Number.isFinite(option.maxNumber) ? option.maxNumber : undefined}
+        step={option.inputType === "number" ? "1" : undefined}
+        pattern={option.inputType === "text" && option.formatRegex ? option.formatRegex : undefined}
+      />
+    );
+  }
+
+  useEffect(() => {
+    if (!showDatePopup && !showTimeslotPopup && !showOptionsModal) return undefined;
+    const onEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setShowDatePopup(false);
+      setShowTimeslotPopup(false);
+      setShowOptionsModal(false);
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [showDatePopup, showTimeslotPopup, showOptionsModal]);
 
   function moveMonth(direction) {
     if (!selectedMonth) return;
@@ -252,7 +490,8 @@ export default function AddToCartCard({
       day.date.startsWith(nextMonth),
     );
     if (firstDateInMonth) {
-      onDateChange(firstDateInMonth.date);
+      // Keep calendar open while browsing months; only closing when a day is tapped.
+      applyTravelDate(firstDateInMonth.date, false);
     }
   }
 
@@ -281,6 +520,15 @@ export default function AddToCartCard({
     }
     setPaxError("");
 
+    const requiredValidation = validateRequiredOptions();
+    if (!requiredValidation.ok) {
+      setShowOptionsModal(true);
+      setOptionError(requiredValidation.message);
+      return;
+    }
+
+    const selectedOptions = buildSelectedOptions();
+
     addItem({
       productUuid,
       productName,
@@ -291,9 +539,9 @@ export default function AddToCartCard({
       timeslotTime: selectedTimeslot?.label || "",
       quantity: totalSelectedQuantity,
       ticketBreakdown,
-      preferredPickupTime: preferredPickupTime.trim(),
-      hotelName: hotelName.trim(),
-      hotelAddress: hotelAddress.trim(),
+      selectedOptions,
+      pricingContext,
+      variantContext,
     });
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1200);
@@ -301,50 +549,6 @@ export default function AddToCartCard({
 
   return (
     <div className={styles.wrap}>
-      {hasAvailability && (
-        <div className={styles.calendarWrap}>
-          <div className={styles.calendarHead}>
-            <button
-              type="button"
-              className={styles.monthButton}
-              onClick={() => moveMonth(-1)}
-              disabled={availableMonths.indexOf(selectedMonth) <= 0}
-            >
-              Prev
-            </button>
-            <p>{selectedMonthLabel}</p>
-            <button
-              type="button"
-              className={styles.monthButton}
-              onClick={() => moveMonth(1)}
-              disabled={
-                availableMonths.indexOf(selectedMonth) === -1 ||
-                availableMonths.indexOf(selectedMonth) >= availableMonths.length - 1
-              }
-            >
-              Next
-            </button>
-          </div>
-          <div className={styles.calendarDays}>
-            {monthDays.map((day) => (
-              <button
-                key={day.date}
-                type="button"
-                className={`${styles.dayButton} ${
-                  day.date === travelDate ? styles.dayButtonActive : ""
-                }`}
-                onClick={() => onDateChange(day.date)}
-              >
-                {day.date.slice(8, 10)} ({(day.weekday || "Day").slice(0, 3)})
-              </button>
-            ))}
-          </div>
-          <p className={styles.nearestText}>
-            Nearest availability: {firstAvailableDate || "N/A"}
-          </p>
-        </div>
-      )}
-
       {!hasAvailability && (
         <p className={styles.unavailableText}>
           No available dates/timeslots in the loaded availability window.
@@ -359,94 +563,61 @@ export default function AddToCartCard({
       <div className={styles.selectorRow}>
         <label className={styles.field}>
           <span>Travel Date</span>
-          {hasAvailability ? (
-            <input type="text" value={travelDate} readOnly />
-          ) : (
-            <input
-              type="date"
-              value={travelDate}
-              onChange={(event) => onDateChange(event.target.value)}
-            />
-          )}
+          <button
+            type="button"
+            className={styles.popupTrigger}
+            onClick={() => setShowDatePopup(true)}
+            disabled={!hasAvailability}
+          >
+            {selectedDateLabel}
+          </button>
         </label>
         <div className={styles.field}>
           <span>Total Quantity</span>
           <input type="number" min="0" value={totalSelectedQuantity} readOnly />
         </div>
       </div>
-      {selectedAvailabilityDay && selectedAvailabilityDay.timeslots.length > 0 && (
-        <div className={styles.selectorRow}>
-          <label className={styles.field}>
-            <span>Timeslot</span>
-            <select
-              value={timeslotUuid}
-              onChange={(event) => setTimeslotUuid(event.target.value)}
-            >
-              {selectedAvailabilityDay.timeslots.map((slot) => (
-                <option key={slot.uuid} value={slot.uuid}>
-                  {slot.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className={styles.field}>
-            <span>Available Quantity</span>
-            <input
-              type="text"
-              readOnly
-              value={selectedTimeslot ? selectedTimeslot.availableQuantity : "N/A"}
-            />
-          </div>
-        </div>
-      )}
-      {selectedAvailabilityDay && selectedAvailabilityDay.timeslots.length === 0 && (
-        <div className={styles.selectorRow}>
-          <div className={styles.field}>
-            <span>Availability Type</span>
-            <input type="text" readOnly value="Date-based (no timeslots)" />
-          </div>
-          <div className={styles.field}>
-            <span>Available Quantity</span>
-            <input
-              type="text"
-              readOnly
-              value={Number(selectedAvailabilityDay.availableQuantity) || "N/A"}
-            />
-          </div>
-        </div>
-      )}
-      {isDinnerCruiseTransferProduct && (
-        <div className={styles.selectorRow}>
-          <label className={styles.field}>
-            <span>Preferred Pickup Time</span>
-            <input
-              type="text"
-              value={preferredPickupTime}
-              onChange={(event) => setPreferredPickupTime(event.target.value)}
-              placeholder="e.g. 18:30"
-            />
-          </label>
-          <label className={styles.field}>
-            <span>Hotel Name</span>
-            <input
-              type="text"
-              value={hotelName}
-              onChange={(event) => setHotelName(event.target.value)}
-              placeholder="Enter hotel name"
-            />
-          </label>
-        </div>
-      )}
-      {isDinnerCruiseTransferProduct && (
+      <div className={styles.selectorRow}>
         <label className={styles.field}>
-          <span>Hotel Address</span>
+          <span>Timeslot</span>
+          <button
+            type="button"
+            className={styles.popupTrigger}
+            onClick={() => setShowTimeslotPopup(true)}
+            disabled={!selectedAvailabilityDay || selectedAvailabilityDay.timeslots.length === 0}
+          >
+            {selectedAvailabilityDay?.timeslots?.length > 0
+              ? selectedTimeslotLabel
+              : "Date-based availability"}
+          </button>
+        </label>
+        <div className={styles.field}>
+          <span>Available Quantity</span>
           <input
             type="text"
-            value={hotelAddress}
-            onChange={(event) => setHotelAddress(event.target.value)}
-            placeholder="Enter hotel address"
+            readOnly
+            value={
+              selectedAvailabilityDay?.timeslots?.length > 0
+                ? selectedTimeslot?.availableQuantity ?? "N/A"
+                : Number(selectedAvailabilityDay?.availableQuantity) || "N/A"
+            }
           />
-        </label>
+        </div>
+      </div>
+      {hasAvailability ? (
+        <p className={styles.nearestText}>Nearest availability: {firstAvailableDate || "N/A"}</p>
+      ) : null}
+      {requiredOptions.length > 0 && (
+        <button
+          type="button"
+          className={styles.manageOptionsButton}
+          onClick={() => {
+            setOptionError("");
+            setShowOptionsModal(true);
+          }}
+        >
+          Add required details ({requiredOptions.length})
+        </button>
       )}
       {activeCategoryAvailability.length > 0 && (
         <section className={styles.ticketMix}>
@@ -509,6 +680,7 @@ export default function AddToCartCard({
         </section>
       )}
       {paxError ? <p className={styles.unavailableText}>{paxError}</p> : null}
+      {optionError ? <p className={styles.unavailableText}>{optionError}</p> : null}
       <button
         type="button"
         className={styles.button}
@@ -522,6 +694,212 @@ export default function AddToCartCard({
       >
         {added ? "Added to cart" : "Add to cart"}
       </button>
+
+      {showDatePopup && (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setShowDatePopup(false);
+          }}
+        >
+          <div className={styles.popupCard}>
+            <div className={styles.modalHeader}>
+              <h3>Select travel date</h3>
+              <button
+                type="button"
+                onClick={() => setShowDatePopup(false)}
+                className={styles.modalClose}
+              >
+                Close
+              </button>
+            </div>
+            <div className={styles.calendarHead}>
+              <button
+                type="button"
+                className={styles.monthButton}
+                onClick={() => moveMonth(-1)}
+                disabled={availableMonths.indexOf(selectedMonth) <= 0}
+              >
+                Prev
+              </button>
+              <p>{selectedMonthLabel}</p>
+              <button
+                type="button"
+                className={styles.monthButton}
+                onClick={() => moveMonth(1)}
+                disabled={
+                  availableMonths.indexOf(selectedMonth) === -1 ||
+                  availableMonths.indexOf(selectedMonth) >= availableMonths.length - 1
+                }
+              >
+                Next
+              </button>
+            </div>
+            <div className={styles.calendarDays}>
+              {monthDays.map((day) => (
+                <button
+                  key={day.date}
+                  type="button"
+                  className={`${styles.dayButton} ${
+                    day.date === travelDate ? styles.dayButtonActive : ""
+                  }`}
+                  onClick={() => onDateChange(day.date)}
+                >
+                  <span>{day.date.slice(8, 10)}</span>
+                  <small>{(day.weekday || "Day").slice(0, 3)}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTimeslotPopup && (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setShowTimeslotPopup(false);
+          }}
+        >
+          <div className={styles.popupCard}>
+            <div className={styles.modalHeader}>
+              <h3>Select timeslot</h3>
+              <button
+                type="button"
+                onClick={() => setShowTimeslotPopup(false)}
+                className={styles.modalClose}
+              >
+                Close
+              </button>
+            </div>
+            {!selectedAvailabilityDay || selectedAvailabilityDay.timeslots.length === 0 ? (
+              <p className={styles.modalHint}>No timeslots are required for this selected date.</p>
+            ) : (
+              <div className={styles.timeslotList}>
+                {selectedAvailabilityDay.timeslots.map((slot) => (
+                  <button
+                    key={slot.uuid}
+                    type="button"
+                    className={`${styles.timeslotButton} ${
+                      slot.uuid === selectedTimeslot?.uuid ? styles.timeslotButtonActive : ""
+                    }`}
+                    onClick={() => {
+                      setTimeslotUuid(slot.uuid);
+                      setShowTimeslotPopup(false);
+                    }}
+                  >
+                    <span>{slot.label}</span>
+                    <small>{slot.availableQuantity} left</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showOptionsModal && (
+        <div
+          className={styles.modalOverlay}
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setShowOptionsModal(false);
+          }}
+        >
+          <div className={styles.modalCard}>
+            <div className={styles.modalHeader}>
+              <h3>Required booking details</h3>
+              <button
+                type="button"
+                onClick={() => setShowOptionsModal(false)}
+                className={styles.modalClose}
+              >
+                Close
+              </button>
+            </div>
+            <p className={styles.modalHint}>
+              These fields come directly from BeMyGuest product options and must be completed accurately.
+            </p>
+            {perBookingOptions.length > 0 ? (
+              <section className={styles.optionSection}>
+                <h4>Per booking details</h4>
+                <div className={styles.modalGrid}>
+                  {perBookingOptions.map((option) => (
+                    <label key={option.uuid} className={styles.modalField}>
+                      <span>
+                        {toLabel(option)} {option.required ? "*" : ""}
+                      </span>
+                      {renderOptionInput(option)}
+                      {toOptionHint(option) ? (
+                        <small className={styles.optionHint}>{toOptionHint(option)}</small>
+                      ) : null}
+                    </label>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {perPaxOptions.length > 0 ? (
+              <section className={styles.optionSection}>
+                <h4>Per guest details</h4>
+                <div className={styles.modalGrid}>
+                  {perPaxOptions.map((option) => (
+                    <div key={option.uuid} className={styles.perGuestBlock}>
+                      <p className={styles.perGuestTitle}>
+                        {toLabel(option)} {option.required ? "*" : ""}
+                      </p>
+                      <div className={styles.perGuestRows}>
+                        {Array.from({ length: Math.max(0, totalSelectedQuantity) }, (_, guestIndex) => (
+                          <label
+                            key={`${option.uuid}:guest:${guestIndex}`}
+                            className={styles.perGuestRow}
+                          >
+                            <span className={styles.perGuestLabel}>Guest {guestIndex + 1}</span>
+                            {renderOptionInput(option, {
+                              value: perPaxValuesByOption?.[option.uuid]?.[guestIndex] ?? "",
+                              onChange: (event) =>
+                                onPerPaxOptionValueChange(
+                                  option.uuid,
+                                  guestIndex,
+                                  event.target.value,
+                                ),
+                            })}
+                          </label>
+                        ))}
+                      </div>
+                      <small className={styles.optionHint}>
+                        {toScopeLabel(option.scope)} field
+                        {toOptionHint(option) ? ` · ${toOptionHint(option)}` : ""}
+                      </small>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.modalSave}
+                onClick={() => {
+                  const result = validateRequiredOptions();
+                  if (!result.ok) {
+                    setOptionError(result.message);
+                    return;
+                  }
+                  setOptionError("");
+                  setShowOptionsModal(false);
+                }}
+              >
+                Save details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

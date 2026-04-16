@@ -42,6 +42,34 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+.optionsWrap {
+  margin-top: 8px;
+  border: 1px solid #dbe4f4;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.optionsTitle {
+  color: #0f172a;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.optionsList {
+  margin-top: 6px;
+  display: grid;
+  gap: 5px;
+}
+
+.optionsList li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #334155;
+}
+
 .controls {
   margin-top: 10px;
   display: grid;

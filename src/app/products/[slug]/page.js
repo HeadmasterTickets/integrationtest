@@ -9,6 +9,9 @@ import {
 } from "@/lib/bemyguest";
 import {
   normalizeAvailabilityCalendar,
+  normalizeProductConsumerDetails,
+  normalizeProductTypeCommercialDetails,
+  normalizeProductTypeOptions,
   normalizeProductTypePaxConstraints,
   normalizeProductTypes,
   pickProductName,
@@ -16,10 +19,7 @@ import {
 import { getIntegrationProductBySlug } from "@/lib/integration-products";
 import styles from "./product.module.css";
 
-function hasExpectedProductType(payload, expectedTypeUuid) {
-  const candidates = normalizeProductTypes(payload);
-  return candidates.some((item) => item.uuid === expectedTypeUuid);
-}
+const DISPLAY_CURRENCY = "SDG";
 
 function addDays(dateString, days) {
   const date = new Date(dateString);
@@ -66,6 +66,103 @@ function mergeAvailabilityDays(dayRows) {
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function formatCurrency(value, currencyCode = DISPLAY_CURRENCY) {
+  if (!Number.isFinite(Number(value))) return "";
+  return new Intl.NumberFormat("en-SG", {
+    style: "currency",
+    currency: currencyCode || DISPLAY_CURRENCY,
+    maximumFractionDigits: 2,
+  }).format(Number(value));
+}
+
+function getRecommendedTicketPrice(basePrice, commercial) {
+  const ticketTypePrices = Array.isArray(commercial?.ticketTypes)
+    ? commercial.ticketTypes
+        .map((ticketType) => {
+          const gateRate = Number(ticketType?.gateRatePrice);
+          const markup = Number(ticketType?.recommendedMarkup);
+          if (!Number.isFinite(gateRate) || !Number.isFinite(markup)) return null;
+          return gateRate + markup;
+        })
+        .filter((value) => Number.isFinite(value))
+    : [];
+  // Prefer lowest positive resale per ticket type (child/free tiers can be 0+0 and would skew "from" price).
+  const positiveTicketPrices = ticketTypePrices.filter((value) => value > 0);
+  if (positiveTicketPrices.length > 0) {
+    return Math.min(...positiveTicketPrices);
+  }
+  const markup = Number(commercial?.recommendedMarkup);
+  if (Number.isFinite(basePrice) && Number.isFinite(markup)) {
+    const sum = Number(basePrice) + markup;
+    if (sum > 0) return sum;
+  }
+  if (Number.isFinite(basePrice) && Number(basePrice) > 0) {
+    return Number(basePrice);
+  }
+  return null;
+}
+
+function buildMinimumRequirementLabel(paxConstraints, commercial) {
+  const bits = [];
+  if (Number.isFinite(paxConstraints?.minPax) && paxConstraints.minPax > 0) {
+    bits.push(`Minimum ${paxConstraints.minPax} guest(s) per booking`);
+  } else if (Number.isFinite(commercial?.minPax) && commercial.minPax > 0) {
+    bits.push(`Minimum ${commercial.minPax} guest(s) per booking`);
+  }
+  if (Number.isFinite(commercial?.minGroup) && commercial.minGroup > 0) {
+    bits.push(`Minimum ${commercial.minGroup} group(s)`);
+  }
+  if (paxConstraints?.perCategory) {
+    const categoryBits = Object.entries(paxConstraints.perCategory)
+      .filter(([, rule]) => Number.isFinite(rule?.min) && rule.min > 0)
+      .map(([category, rule]) => {
+        const label = String(category).replace(/\b\w/g, (char) => char.toUpperCase());
+        return `${rule.min}+ ${label}`;
+      });
+    if (categoryBits.length > 0) {
+      bits.push(`Per ticket type: ${categoryBits.join(", ")}`);
+    }
+  }
+  return bits;
+}
+
+function buildFactRows(productInfo) {
+  const rows = [];
+  if (productInfo.businessHoursFrom || productInfo.businessHoursTo) {
+    rows.push({
+      label: "Opening Hours",
+      value: [productInfo.businessHoursFrom, productInfo.businessHoursTo]
+        .filter(Boolean)
+        .join(" - "),
+    });
+  }
+  if (Number.isFinite(productInfo.minPax) || Number.isFinite(productInfo.maxPax)) {
+    rows.push({
+      label: "Group Size",
+      value: `${productInfo.minPax ?? "-"} to ${productInfo.maxPax ?? "-"} guest(s)`,
+    });
+  }
+  if (productInfo.address) {
+    rows.push({
+      label: "Address",
+      value: productInfo.address,
+    });
+  }
+  if (productInfo.locations.length > 0) {
+    rows.push({
+      label: "Destinations",
+      value: productInfo.locations.map((location) => location.label).join(" | "),
+    });
+  }
+  if (productInfo.guideLanguages.length > 0) {
+    rows.push({
+      label: "Guide Languages",
+      value: productInfo.guideLanguages.join(", "),
+    });
+  }
+  return rows;
+}
+
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const product = getIntegrationProductBySlug(slug);
@@ -85,7 +182,7 @@ export default async function ProductPage({ params }) {
     notFound();
   }
 
-  const { productUuid, productTypeUuid, id: productLabel } = product;
+  const { productUuid, id: productLabel } = product;
 
   let productPayload = null;
   let productTypesPayload = null;
@@ -102,23 +199,29 @@ export default async function ProductPage({ params }) {
 
   const productName = productPayload ? pickProductName(productPayload) : null;
   const productTypes = productTypesPayload ? normalizeProductTypes(productTypesPayload) : [];
-  const expectedTypeFound = productTypesPayload
-    ? hasExpectedProductType(productTypesPayload, productTypeUuid)
-    : false;
-
   let availabilityByTypeUuid = {};
   const paxConstraintsByTypeUuid = {};
+  const commercialByTypeUuid = {};
+  const optionsByTypeUuid = {};
   if (!errorMessage && productTypes.length > 0) {
     const ranges = buildAvailabilityRangesForYear();
 
-    const typeDetailPayloads = await Promise.all(
-      productTypes.map((type) => getProductTypeDetails(type.uuid).catch(() => null)),
+    const typeDetailEntries = await Promise.all(
+      productTypes.map(async (type) => [
+        type.uuid,
+        await getProductTypeDetails(type.uuid).catch(() => null),
+      ]),
     );
-    productTypes.forEach((type, index) => {
-      const constraints = normalizeProductTypePaxConstraints(typeDetailPayloads[index]);
+    const typeDetailPayloadByTypeUuid = Object.fromEntries(typeDetailEntries);
+
+    productTypes.forEach((type) => {
+      const detailPayload = typeDetailPayloadByTypeUuid[type.uuid];
+      const constraints = normalizeProductTypePaxConstraints(detailPayload);
       if (constraints) {
         paxConstraintsByTypeUuid[type.uuid] = constraints;
       }
+      commercialByTypeUuid[type.uuid] = normalizeProductTypeCommercialDetails(detailPayload);
+      optionsByTypeUuid[type.uuid] = normalizeProductTypeOptions(detailPayload);
     });
 
     const availabilityEntries = await Promise.all(
@@ -164,39 +267,57 @@ export default async function ProductPage({ params }) {
     availabilityByTypeUuid = Object.fromEntries(availabilityEntries);
   }
 
+  const productInfo = normalizeProductConsumerDetails(productPayload);
+  const factRows = buildFactRows(productInfo);
+  const heroImage = productInfo.images[0] || "";
+  const retailBadges = [productInfo.hasHotelPickup ? "Hotel Pickup Available" : ""].filter(Boolean);
+  const startingRecommendedPrice = productTypes
+    .map((type) =>
+      getRecommendedTicketPrice(productInfo.basePrice, commercialByTypeUuid[type.uuid] || {}),
+    )
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const displayStartingPrice =
+    startingRecommendedPrice.length > 0
+      ? Math.min(...startingRecommendedPrice)
+      : getRecommendedTicketPrice(productInfo.basePrice, {});
+
   return (
     <main className={styles.page}>
       <section className={styles.card}>
         <header className={styles.header}>
-          <p className={styles.kicker}>BeMyGuest Published Product</p>
-          <h1>{productName || productLabel} Ticket Details</h1>
+          <p className={styles.kicker}>Book Online</p>
+          <h1>{productName || productLabel}</h1>
           <p className={styles.subtitle}>
-            Product details and variants load from the BeMyGuest demo API. Use
-            Add to cart to test checkout.
+            Book your preferred date and ticket type with live availability and instant booking
+            requirements.
           </p>
+          {retailBadges.length > 0 && (
+            <div className={styles.badgeRow}>
+              {retailBadges.map((badge) => (
+                <span key={badge} className={styles.badge}>
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
         </header>
 
-        <div className={styles.meta}>
-          <p>
-            <strong>Product UUID</strong>
-            <span>{productUuid}</span>
-          </p>
-          <p>
-            <strong>Primary Product-Type UUID</strong>
-            <span>{productTypeUuid}</span>
-          </p>
-          {productName && (
-            <p>
-              <strong>Product Name</strong>
-              <span>{productName}</span>
+        <div className={styles.heroGrid}>
+          <article className={styles.pricePanel}>
+            <p className={styles.priceLabel}>Starting from</p>
+            <p className={styles.priceValue}>
+              {formatCurrency(displayStartingPrice, DISPLAY_CURRENCY) || "Price on request"}
             </p>
-          )}
-          {productTypesPayload && (
-            <p>
-              <strong>Primary Product-Type Found</strong>
-              <span>{expectedTypeFound ? "Yes" : "No"}</span>
-            </p>
-          )}
+            <p className={styles.priceHint}>All prices shown in SDG.</p>
+          </article>
+          <article className={styles.summaryPanel}>
+            {heroImage ? (
+              <img src={heroImage} alt={productName || productLabel} className={styles.heroImage} />
+            ) : null}
+            <div className={styles.summaryText}>
+              <p>{productInfo.shortDescription || "Description unavailable."}</p>
+            </div>
+          </article>
         </div>
 
         {errorMessage ? (
@@ -209,18 +330,84 @@ export default async function ProductPage({ params }) {
             </p>
           </div>
         ) : (
-          <div className={styles.successBox}>
-            <h2>Live API Fetch Success</h2>
-            <p>
-              Product details and product-types are fetched server-side from
-              BeMyGuest demo API.
-            </p>
-          </div>
+          <>
+            <section className={styles.factsSection}>
+              {factRows.map((fact) => (
+                <article key={fact.label} className={styles.factCard}>
+                  <h3>{fact.label}</h3>
+                  <p>{fact.value}</p>
+                </article>
+              ))}
+            </section>
+
+            <section className={styles.detailSection}>
+              {productInfo.highlights.length > 0 && (
+                <article className={styles.detailCard}>
+                  <h3>Highlights</h3>
+                  <ul>
+                    {productInfo.highlights.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              )}
+              {productInfo.inclusions.length > 0 && (
+                <article className={styles.detailCard}>
+                  <h3>Included</h3>
+                  <ul>
+                    {productInfo.inclusions.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              )}
+              {productInfo.exclusions.length > 0 && (
+                <article className={styles.detailCard}>
+                  <h3>Not Included</h3>
+                  <ul>
+                    {productInfo.exclusions.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              )}
+              {productInfo.additionalInfo.length > 0 && (
+                <article className={styles.detailCard}>
+                  <h3>Additional Info</h3>
+                  <ul>
+                    {productInfo.additionalInfo.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              )}
+              {productInfo.warnings.length > 0 && (
+                <article className={styles.detailCard}>
+                  <h3>Important Notes</h3>
+                  <ul>
+                    {productInfo.warnings.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              )}
+              {productInfo.itinerary.length > 0 && (
+                <article className={styles.detailCard}>
+                  <h3>Itinerary</h3>
+                  <ul>
+                    {productInfo.itinerary.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              )}
+            </section>
+          </>
         )}
 
         {!errorMessage && (
           <section className={styles.typesSection}>
-            <h2>Product Types</h2>
+            <h2>Ticket Options</h2>
             {productTypes.length === 0 ? (
               <p className={styles.emptyText}>No product-types returned by API.</p>
             ) : (
@@ -230,41 +417,87 @@ export default async function ProductPage({ params }) {
                     days: [],
                     error: "",
                   };
-                  const previewDays = availability.days.slice(0, 6);
+                  const commercial = commercialByTypeUuid[type.uuid] || {};
+                  const optionDefinitions = optionsByTypeUuid[type.uuid] || {
+                    all: [],
+                    requiredPerBooking: [],
+                    requiredPerPax: [],
+                  };
+                  const ticketPrice = getRecommendedTicketPrice(productInfo.basePrice, commercial);
+                  const minimumRequirements = buildMinimumRequirementLabel(
+                    paxConstraintsByTypeUuid[type.uuid] || null,
+                    commercial,
+                  );
 
                   return (
                     <article key={type.uuid} className={styles.typeCard}>
-                      <h3>{type.name}</h3>
-                      <p>
-                        <strong>Product-Type UUID</strong>
-                        <span>{type.uuid}</span>
-                      </p>
+                      <div className={styles.typeHeader}>
+                        <div>
+                          <h3>{type.name}</h3>
+                        </div>
+                        <div className={styles.typePricing}>
+                          {Number.isFinite(ticketPrice) && ticketPrice > 0 && (
+                            <p className={styles.recommendedPrice}>
+                              Ticket price: {formatCurrency(ticketPrice, DISPLAY_CURRENCY)}
+                            </p>
+                          )}
+                          {(!Number.isFinite(ticketPrice) || ticketPrice <= 0) && (
+                            <p>Price on request</p>
+                          )}
+                        </div>
+                      </div>
 
-                      <section className={styles.availabilitySection}>
-                          <h4>Availability (next 12 months)</h4>
-                        {availability.error ? (
-                          <p className={styles.availabilityError}>{availability.error}</p>
-                        ) : previewDays.length === 0 ? (
-                          <p className={styles.availabilityEmpty}>
-                              No availability returned in the next 12 months.
-                          </p>
-                        ) : (
-                          <ul className={styles.availabilityList}>
-                            {previewDays.map((day) => (
-                              <li key={`${type.uuid}-${day.date}`}>
-                                <span className={styles.dayLabel}>
-                                  {day.date} ({day.weekday || "Day"})
-                                </span>
-                                <span className={styles.slotLabel}>
-                                  {day.timeslots.length > 0
-                                    ? day.timeslots.map((slot) => slot.label).join(", ")
-                                    : "No timeslots"}
-                                </span>
+                      <div className={styles.variantMeta}>
+                        {commercial.durationLabel ? (
+                          <span>Duration: {commercial.durationLabel}</span>
+                        ) : null}
+                        {commercial.cancellationPolicySummary ? (
+                          <span>Flexible cancellation</span>
+                        ) : null}
+                        {commercial.instantConfirmation ? (
+                          <span>Instant confirmation</span>
+                        ) : null}
+                        {commercial.directAdmission ? <span>Direct admission</span> : null}
+                        {commercial.firstAvailabilityDate ? (
+                          <span>Available from {commercial.firstAvailabilityDate}</span>
+                        ) : null}
+                        {minimumRequirements.length > 0 ? (
+                          <span>{minimumRequirements[0]}</span>
+                        ) : null}
+                      </div>
+
+                      {availability.error ? (
+                        <p className={styles.availabilityError}>{availability.error}</p>
+                      ) : null}
+
+                      {commercial.meetingLocation || commercial.meetingAddress ? (
+                        <section className={styles.meetingSection}>
+                          <h4>Meeting & Pickup</h4>
+                          {commercial.meetingLocation ? (
+                            <p>{commercial.meetingLocation}</p>
+                          ) : null}
+                          {commercial.meetingAddress ? (
+                            <p className={styles.meetingAddress}>{commercial.meetingAddress}</p>
+                          ) : null}
+                        </section>
+                      ) : null}
+
+                      {optionDefinitions.requiredPerBooking.length > 0 ||
+                      optionDefinitions.requiredPerPax.length > 0 ? (
+                        <section className={styles.meetingSection}>
+                          <h4>Required before adding to cart</h4>
+                          <ul className={styles.requiredOptionList}>
+                            {optionDefinitions.requiredPerBooking.map((option) => (
+                              <li key={option.uuid}>{option.name}</li>
+                            ))}
+                            {optionDefinitions.requiredPerPax.map((option) => (
+                              <li key={option.uuid}>
+                                {option.name} (required per guest)
                               </li>
                             ))}
                           </ul>
-                        )}
-                      </section>
+                        </section>
+                      ) : null}
 
                       <AddToCartCard
                         productUuid={productUuid}
@@ -273,6 +506,17 @@ export default async function ProductPage({ params }) {
                         productTypeName={type.name}
                         availabilityDays={availability.days}
                         paxConstraints={paxConstraintsByTypeUuid[type.uuid] || null}
+                        optionDefinitions={optionDefinitions}
+                        pricingContext={{
+                          basePrice: productInfo.basePrice,
+                          currencyCode: DISPLAY_CURRENCY,
+                          currencySymbol: DISPLAY_CURRENCY,
+                          recommendedMarkup: commercial.recommendedMarkup,
+                          childRecommendedMarkup: commercial.childRecommendedMarkup,
+                          seniorRecommendedMarkup: commercial.seniorRecommendedMarkup,
+                          ticketTypes: commercial.ticketTypes,
+                        }}
+                        variantContext={commercial}
                       />
                     </article>
                   );

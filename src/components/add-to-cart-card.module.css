@@ -1,35 +1,32 @@
 .wrap {
-  margin-top: 12px;
-}
-
-.calendarWrap {
-  border: 1px solid #dbe4f4;
-  border-radius: 10px;
-  background: #ffffff;
-  padding: 10px;
-  margin-bottom: 12px;
+  margin-top: 14px;
+  /* Force light form controls: global dark mode sets html { color-scheme: dark }, which makes
+     native inputs/selects dark while local color rules still expect dark text — unreadable. */
+  color-scheme: light;
+  color: #0f172a;
 }
 
 .calendarHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .calendarHead p {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: #0f172a;
   font-weight: 600;
 }
 
 .monthButton {
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  background: #f8fafc;
-  color: #0f172a;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
   padding: 6px 10px;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 600;
   cursor: pointer;
 }
@@ -40,33 +37,47 @@
 }
 
 .calendarDays {
-  margin-top: 10px;
+  margin-top: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 8px;
+  max-height: 280px;
+  overflow: auto;
 }
 
 .dayButton {
-  border: 1px solid #dbe4f4;
-  border-radius: 8px;
-  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #ffffff;
   color: #0f172a;
   padding: 8px 6px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.dayButton small {
+  color: #475569;
+  font-size: 0.74rem;
 }
 
 .dayButtonActive {
-  background: #dbeafe;
-  border-color: #93c5fd;
-  color: #1d4ed8;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.dayButtonActive small {
+  color: #dbeafe;
 }
 
 .nearestText {
-  margin-top: 8px;
-  font-size: 0.8rem;
-  color: #475569;
+  margin: 10px 0 0;
+  font-size: 0.84rem;
+  color: #334155;
 }
 
 .unavailableText {
@@ -79,6 +90,7 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  margin-top: 10px;
 }
 
 .field {
@@ -89,17 +101,55 @@
 
 .field span {
   font-size: 0.85rem;
-  color: #3f4f70;
+  color: #334155;
+  font-weight: 600;
 }
 
 .field input,
-.field select {
-  border: 1px solid #cbd5e1;
+.field select,
+.field textarea {
+  border: 1px solid #94a3b8;
   border-radius: 10px;
   padding: 10px 12px;
   font-size: 0.95rem;
-  color: #0f1a32;
-  background: #fff;
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+.field input::placeholder,
+.field textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.popupTrigger {
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 0.94rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.popupTrigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background: #f8fafc;
+}
+
+.manageOptionsButton {
+  margin-top: 10px;
+  border: 1px solid #60a5fa;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1e3a8a;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .button {
@@ -119,17 +169,213 @@
   cursor: not-allowed;
 }
 
-.ticketMix {
-  margin-top: 12px;
-  border: 1px solid #dbe4f4;
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(2, 6, 23, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.modalCard {
+  width: min(760px, 100%);
+  max-height: min(86vh, 820px);
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid #bfdbfe;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.3);
+  padding: 18px;
+  color-scheme: light;
+  color: #0f172a;
+}
+
+.popupCard {
+  width: min(560px, 100%);
+  max-height: min(86vh, 760px);
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid #bfdbfe;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
+  padding: 18px;
+  color-scheme: light;
+  color: #0f172a;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.modalHeader h3 {
+  color: #0f172a;
+  font-size: 1.02rem;
+}
+
+.modalClose {
+  border: 1px solid #94a3b8;
   border-radius: 10px;
   background: #ffffff;
+  color: #1e293b;
+  padding: 7px 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modalHint {
+  margin-top: 8px;
+  color: #334155;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.optionSection {
+  margin-top: 14px;
+}
+
+.optionSection h4 {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.modalGrid {
+  margin-top: 10px;
+  display: grid;
+  gap: 12px;
+}
+
+.modalField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modalField span {
+  color: #1e293b;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.modalField input,
+.modalField select,
+.modalField textarea {
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 0.9rem;
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+.modalField input::placeholder,
+.modalField textarea::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+.modalField select option {
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+.perGuestBlock {
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
   padding: 10px;
 }
 
-.ticketMixTitle {
+.perGuestTitle {
+  color: #0f172a;
   font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.perGuestRows {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.perGuestRow {
+  display: grid;
+  gap: 6px;
+}
+
+.perGuestLabel {
   color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.modalActions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.modalSave {
+  border: 1px solid #1e40af;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.optionHint {
+  color: #475569;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.timeslotList {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.timeslotButton {
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.timeslotButton small {
+  color: #475569;
+}
+
+.timeslotButtonActive {
+  border-color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.ticketMix {
+  margin-top: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.ticketMixTitle {
+  font-size: 0.9rem;
+  color: #0f172a;
   font-weight: 600;
 }
 
@@ -147,15 +393,22 @@
 }
 
 .ticketMixRow span {
-  font-size: 0.84rem;
-  color: #3f4f70;
+  font-size: 0.85rem;
+  color: #1e293b;
 }
 
 .ticketMixRow input {
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
+  border: 1px solid #94a3b8;
+  border-radius: 10px;
   padding: 8px 10px;
   font-size: 0.9rem;
+  color: #0f172a;
+  background-color: #ffffff;
+}
+
+.ticketMixRow input::placeholder {
+  color: #64748b;
+  opacity: 1;
 }
 
 .constraintsHint {

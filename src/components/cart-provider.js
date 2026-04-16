@@ -16,14 +16,18 @@ const FALLBACK_CART_CONTEXT = {
 };
 
 function getItemKey(item) {
+  const selectedOptions = Array.isArray(item.selectedOptions)
+    ? [...item.selectedOptions]
+        .map((entry) => `${entry.uuid}:${entry.value}`)
+        .sort()
+        .join("|")
+    : "";
   return [
     item.productUuid,
     item.productTypeUuid,
     item.travelDate || "",
     item.timeslotUuid || "",
-    item.preferredPickupTime || "",
-    item.hotelName || "",
-    item.hotelAddress || "",
+    selectedOptions,
   ].join(":");
 }
 
@@ -46,6 +50,20 @@ function normalizeTicketBreakdown(entries) {
     });
   }
   return Array.from(byCategory.values());
+}
+
+function normalizeSelectedOptions(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry) => ({
+      uuid: entry?.uuid || "",
+      scope: entry?.scope || "",
+      name: entry?.name || "",
+      required: Boolean(entry?.required),
+      inputType: entry?.inputType || "text",
+      value: entry?.value ?? "",
+    }))
+    .filter((entry) => entry.uuid && String(entry.value).trim() !== "");
 }
 
 export function CartProvider({ children }) {
@@ -73,17 +91,28 @@ export function CartProvider({ children }) {
         const key = getItemKey(payload);
         const idx = prev.findIndex((item) => getItemKey(item) === key);
         if (idx === -1) {
-          return [...prev, payload];
+          return [
+            ...prev,
+            {
+              ...payload,
+              selectedOptions: normalizeSelectedOptions(payload.selectedOptions),
+            },
+          ];
         }
         const next = [...prev];
         const mergedBreakdown = normalizeTicketBreakdown([
           ...(next[idx].ticketBreakdown || []),
           ...(payload.ticketBreakdown || []),
         ]);
+        const mergedOptions = normalizeSelectedOptions([
+          ...(next[idx].selectedOptions || []),
+          ...(payload.selectedOptions || []),
+        ]);
         next[idx] = {
           ...next[idx],
           quantity: next[idx].quantity + payload.quantity,
           ticketBreakdown: mergedBreakdown,
+          selectedOptions: mergedOptions,
         };
         return next;
       });

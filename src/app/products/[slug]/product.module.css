@@ -8,18 +8,20 @@
 }
 
 .card {
-  max-width: 1120px;
+  max-width: 1180px;
   margin: 0 auto;
   background: #fff;
   border-radius: 18px;
   border: 1px solid #dbe4f4;
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1);
   padding: 28px;
+  color-scheme: light;
+  color: #0f172a;
 }
 
 .header {
-  border-bottom: 1px dashed #dbe4f4;
-  padding-bottom: 14px;
+  border-bottom: 1px solid #edf2fb;
+  padding-bottom: 18px;
 }
 
 .kicker {
@@ -35,7 +37,7 @@
 
 .card h1 {
   color: #0f172a;
-  font-size: 2rem;
+  font-size: 2.1rem;
   margin-top: 10px;
 }
 
@@ -45,58 +47,140 @@
   line-height: 1.6;
 }
 
-.meta {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-}
-
-.meta p {
+.badgeRow {
+  margin-top: 14px;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.meta strong {
-  color: #475569;
+.badge {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
   font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.heroGrid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 14px;
+}
+
+.pricePanel,
+.summaryPanel {
+  border: 1px solid #dbe4f4;
+  border-radius: 14px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.priceLabel {
+  font-size: 0.82rem;
+  color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
-.meta span {
+.priceValue {
+  margin-top: 6px;
+  font-size: 1.62rem;
+  font-weight: 700;
   color: #0f172a;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  word-break: break-all;
-  font-size: 0.84rem;
 }
 
-.successBox,
-.errorBox {
-  margin-top: 18px;
+.priceHint {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.summaryPanel {
+  overflow: hidden;
+}
+
+.heroImage {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   border-radius: 10px;
-  padding: 14px;
+  border: 1px solid #dbe4f4;
+  background: #e2e8f0;
 }
 
-.successBox {
-  border: 1px solid #86efac;
-  background: #f0fdf4;
+.summaryText {
+  margin-top: 10px;
+  color: #334155;
+  line-height: 1.6;
 }
 
 .errorBox {
+  margin-top: 16px;
   border: 1px solid #fecaca;
   background: #fef2f2;
+  border-radius: 10px;
+  padding: 12px;
 }
 
-.successBox h2,
-.errorBox h2 {
-  font-size: 1rem;
-  color: #1d2a44;
+.factsSection {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.factCard {
+  border: 1px solid #dbe4f4;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.factCard h3 {
+  font-size: 0.86rem;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.factCard p {
+  margin-top: 6px;
+  color: #0f172a;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.detailSection {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.detailCard {
+  border: 1px solid #dbe4f4;
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+.detailCard h3 {
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.detailCard ul {
+  margin-top: 8px;
+  margin-left: 18px;
+  color: #334155;
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .typesSection {
@@ -105,6 +189,7 @@
 
 .typesSection h2 {
   color: #0f172a;
+  font-size: 1.16rem;
 }
 
 .typeGrid {
@@ -115,66 +200,59 @@
 }
 
 .typeCard {
-  border: 1px solid #e2e8f0;
+  border: 1px solid #dbe4f4;
   border-radius: 14px;
-  padding: 18px;
-  background: #f8fafc;
+  padding: 16px;
+  background: #fff;
 }
 
-.typeCard h3 {
-  color: #0f172a;
-  margin-bottom: 10px;
-}
-
-.typeCard p {
+.typeHeader {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
 }
 
-.availabilitySection {
-  margin-top: 12px;
+.typeHeader h3 {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.typePricing {
+  min-width: 180px;
   border: 1px solid #dbe4f4;
   border-radius: 10px;
-  padding: 10px;
-  background: #ffffff;
-}
-
-.availabilitySection h4 {
-  font-size: 0.9rem;
-  color: #0f172a;
-}
-
-.availabilityList {
-  list-style: none;
-  margin-top: 8px;
-  display: grid;
-  gap: 8px;
-}
-
-.availabilityList li {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 8px;
   background: #f8fafc;
-  display: flex;
-  flex-direction: column;
+  padding: 10px;
+  color: #334155;
+  font-size: 0.82rem;
+  display: grid;
   gap: 4px;
 }
 
-.dayLabel {
-  font-size: 0.82rem;
-  font-weight: 600;
+.recommendedPrice {
   color: #0f172a;
+  font-weight: 700;
 }
 
-.slotLabel {
-  font-size: 0.8rem;
-  color: #475569;
+.variantMeta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.variantMeta span {
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.75rem;
+  padding: 4px 10px;
 }
 
 .availabilityError {
-  margin-top: 8px;
+  margin-top: 10px;
   color: #b91c1c;
   font-size: 0.84rem;
 }
@@ -185,31 +263,38 @@
   font-size: 0.84rem;
 }
 
-.selectorRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field span {
-  font-size: 0.85rem;
-  color: #3f4f70;
-}
-
-.field input {
-  border: 1px solid #cbd5e1;
+.meetingSection {
+  margin-top: 10px;
+  border: 1px solid #dbe4f4;
   border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 0.95rem;
-  color: #0f1a32;
-  background: #fff;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.meetingSection h4 {
+  font-size: 0.86rem;
+  color: #0f172a;
+}
+
+.meetingSection p {
+  margin-top: 6px;
+  color: #334155;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.meetingAddress {
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.requiredOptionList {
+  margin-top: 8px;
+  margin-left: 16px;
+  color: #334155;
+  display: grid;
+  gap: 4px;
+  font-size: 0.84rem;
 }
 
 .emptyText {
@@ -218,7 +303,7 @@
 }
 
 .footer {
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
 .link {
@@ -244,7 +329,15 @@
     font-size: 1.6rem;
   }
 
-  .selectorRow {
+  .heroGrid {
     grid-template-columns: 1fr;
+  }
+
+  .typeHeader {
+    flex-direction: column;
+  }
+
+  .typePricing {
+    width: 100%;
   }
 }
