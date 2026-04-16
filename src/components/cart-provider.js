@@ -18,7 +18,13 @@ const FALLBACK_CART_CONTEXT = {
 function getItemKey(item) {
   const selectedOptions = Array.isArray(item.selectedOptions)
     ? [...item.selectedOptions]
-        .map((entry) => `${entry.uuid}:${entry.value}`)
+        .map((entry) => {
+          const guest =
+            entry.guestIndex === null || entry.guestIndex === undefined
+              ? ""
+              : String(entry.guestIndex);
+          return `${entry.uuid}:${guest}:${entry.value}`;
+        })
         .sort()
         .join("|")
     : "";
@@ -61,7 +67,10 @@ function normalizeSelectedOptions(entries) {
       name: entry?.name || "",
       required: Boolean(entry?.required),
       inputType: entry?.inputType || "text",
+      semanticType: entry?.semanticType || "",
       value: entry?.value ?? "",
+      guestIndex: Number.isFinite(Number(entry?.guestIndex)) ? Number(entry.guestIndex) : null,
+      guestLabel: entry?.guestLabel || "",
     }))
     .filter((entry) => entry.uuid && String(entry.value).trim() !== "");
 }

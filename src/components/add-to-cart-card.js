@@ -393,6 +393,7 @@ export default function AddToCartCard({
         name: option.name,
         required: Boolean(option.required),
         inputType: option.inputType,
+        semanticType: option.semanticType || "",
         value: optionValues[option.uuid] ?? "",
       }))
       .filter((entry) => !isEmptyOptionValue(entry.value));
@@ -407,6 +408,7 @@ export default function AddToCartCard({
           name: option.name,
           required: Boolean(option.required),
           inputType: option.inputType,
+          semanticType: option.semanticType || "",
           value: value ?? "",
           guestIndex,
           guestLabel: `Guest ${guestIndex + 1}`,

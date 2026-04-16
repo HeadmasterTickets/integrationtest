@@ -86,6 +86,9 @@ function groupOptionsByScope(items) {
       scope: entry.scope || "per_booking",
       name: entry.name || "",
       value: entry.value ?? "",
+      required: Boolean(entry.required),
+      inputType: entry.inputType || "text",
+      semanticType: entry.semanticType || "",
       guestIndex: Number.isFinite(Number(entry.guestIndex)) ? Number(entry.guestIndex) : null,
       guestLabel: entry.guestLabel || "",
       productUuid: entry.productUuid || "",
@@ -102,6 +105,173 @@ function groupOptionsByScope(items) {
     }
   }
   return { perBooking, perPax };
+}
+
+function normalizeOptionNameKey(name) {
+  return String(name || "").toLowerCase();
+}
+
+function findOptionValueByPatterns(entries, patterns) {
+  for (const pattern of patterns) {
+    const hit = (entries || []).find((entry) =>
+      pattern.test(normalizeOptionNameKey(entry?.name)),
+    );
+    const value = String(hit?.value ?? "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+/**
+ * Map BMG per-booking / per-pax option labels to customer_first_name / customer_last_name
+ * when the checkout form did not collect Stripe customer name fields.
+ */
+function deriveCustomerNamesFromBmgOptions(perBooking, perPax) {
+  const leadPax = (perPax || []).filter((entry) => Number(entry?.guestIndex) === 0);
+  const booking = perBooking || [];
+  const allLead = [...leadPax, ...booking];
+
+  let firstName = findOptionValueByPatterns(allLead, [
+    /first\s*name/,
+    /given\s*name/,
+    /^first$/i,
+  ]);
+  let lastName = findOptionValueByPatterns(allLead, [
+    /last\s*name/,
+    /surname/,
+    /family\s*name/,
+    /^last$/i,
+  ]);
+
+  if (!firstName && !lastName) {
+    const full = findOptionValueByPatterns(allLead, [
+      /full\s*name/,
+      /^name$/i,
+      /passenger\s*name/,
+      /traveller\s*name/,
+      /traveler\s*name/,
+      /guest\s*name/,
+      /lead\s*(passenger|guest)?\s*name/,
+      /primary\s*contact/,
+      /contact\s*name/,
+    ]);
+    if (full) {
+      const parts = full.split(/\s+/).filter(Boolean);
+      if (parts.length >= 2) {
+        firstName = parts[0];
+        lastName = parts.slice(1).join(" ");
+      } else {
+        firstName = full;
+      }
+    }
+  }
+
+  return { firstName: firstName || "", lastName: lastName || "" };
+}
+
+function buildBmgTravelersGrouped(perPax) {
+  const map = new Map();
+  for (const entry of perPax || []) {
+    const guestIndex = Number.isFinite(Number(entry?.guestIndex))
+      ? Number(entry.guestIndex)
+      : 0;
+    if (!map.has(guestIndex)) {
+      map.set(guestIndex, {
+        guest_index: guestIndex,
+        guest_label: entry?.guestLabel || `Guest ${guestIndex + 1}`,
+        options: [],
+      });
+    }
+    map.get(guestIndex).options.push({
+      uuid: entry?.uuid || "",
+      name: entry?.name || "",
+      value: String(entry?.value ?? "").trim(),
+      required: Boolean(entry?.required),
+      inputType: entry?.inputType || "text",
+      semanticType: entry?.semanticType || "",
+    });
+  }
+  return Array.from(map.values()).sort((a, b) => a.guest_index - b.guest_index);
+}
+
+/**
+ * Map common booking-option labels to top-level hotel / transfer fields for systems
+ * that only read those keys. All raw rows remain in bmg_options_per_*.
+ */
+function extractLodgingAndTransferFromOptions(perBooking) {
+  const list = perBooking || [];
+
+  let preferred_pickup_time = findOptionValueByPatterns(list, [
+    /preferred\s*(pickup|pick-up|collection|time)/i,
+    /pickup\s*time/i,
+    /collection\s*time/i,
+    /meeting\s*time/i,
+    /^pickup$/i,
+    /^pick-up$/i,
+  ]);
+  if (!preferred_pickup_time) {
+    preferred_pickup_time = findOptionValueByPatterns(list, [
+      /pickup|pick-up|preferred/i,
+    ]);
+  }
+
+  let hotel_name = findOptionValueByPatterns(list, [
+    /hotel\s*name/i,
+    /name\s*of\s*(the\s*)?hotel/i,
+    /accommodation\s*name/i,
+    /property\s*name/i,
+    /resort\s*name/i,
+    /where\s*are\s*you\s*staying/i,
+    /^hotel$/i,
+  ]);
+  if (!hotel_name) {
+    const hotelish = list.find(
+      (entry) =>
+        /hotel|accommodation|property|resort/i.test(String(entry?.name || "")) &&
+        String(entry?.value ?? "").trim(),
+    );
+    hotel_name = hotelish ? String(hotelish.value).trim() : "";
+  }
+
+  let hotel_address = findOptionValueByPatterns(list, [
+    /hotel\s*address/i,
+    /pick-?up\s*(location|address)/i,
+    /drop-?off\s*(location|address)?/i,
+    /accommodation\s*address/i,
+    /stay\s*address/i,
+    /full\s*address/i,
+  ]);
+  if (!hotel_address) {
+    const addrish = list.find((entry) => {
+      const name = String(entry?.name || "");
+      const value = String(entry?.value ?? "").trim();
+      if (!value) return false;
+      return (
+        /address|location/i.test(name) &&
+        !/^hotel$/i.test(name) &&
+        !/hotel\s*name|accommodation\s*name|property\s*name/i.test(name)
+      );
+    });
+    hotel_address = addrish ? String(addrish.value).trim() : "";
+  }
+
+  return { preferred_pickup_time, hotel_name, hotel_address };
+}
+
+function deriveLeadTravelerDisplayName(firstName, lastName, perBooking, perPax) {
+  const combined = [firstName, lastName].filter(Boolean).join(" ").trim();
+  if (combined) return combined;
+  const lead = (perPax || []).filter((entry) => Number(entry?.guestIndex) === 0);
+  const fullFromLead = lead.find((entry) =>
+    /full\s*name|passenger|traveller|traveler|^name$/i.test(String(entry?.name || "")),
+  );
+  const fromLead = String(fullFromLead?.value ?? "").trim();
+  if (fromLead) return fromLead;
+  return findOptionValueByPatterns(perBooking || [], [
+    /full\s*name/,
+    /^name$/i,
+    /contact\s*name/,
+  ]);
 }
 
 function getTicketCountByCategory(ticketBreakdown, category) {
@@ -147,16 +317,25 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
   const arrivalDate = primary.travelDate || "";
   const primaryTimeslot = getPrimaryTimeslot(items);
   const groupedOptions = groupOptionsByScope(items);
-  const firstPerBookingOptionValue = (matcher) =>
-    groupedOptions.perBooking.find((entry) => matcher(entry))?.value || "";
-
-  const transferDetails = {
-    preferred_pickup_time: firstPerBookingOptionValue((entry) =>
-      /pickup|pick-up|preferred/i.test(entry.name),
-    ),
-    hotel_name: firstPerBookingOptionValue((entry) => /hotel\s*name/i.test(entry.name)),
-    hotel_address: firstPerBookingOptionValue((entry) => /hotel\s*address/i.test(entry.name)),
-  };
+  const perBookingForPayload = Array.isArray(body?.bmg_options_per_booking)
+    ? body.bmg_options_per_booking
+    : groupedOptions.perBooking;
+  const perPaxForPayload = Array.isArray(body?.bmg_options_per_pax)
+    ? body.bmg_options_per_pax
+    : groupedOptions.perPax;
+  const derivedFromBmg = deriveCustomerNamesFromBmgOptions(
+    perBookingForPayload,
+    perPaxForPayload,
+  );
+  const bmg_travelers = buildBmgTravelersGrouped(perPaxForPayload);
+  const bmg_lead_traveler_display_name = deriveLeadTravelerDisplayName(
+    derivedFromBmg.firstName,
+    derivedFromBmg.lastName,
+    perBookingForPayload,
+    perPaxForPayload,
+  );
+  const transferDetails = extractLodgingAndTransferFromOptions(perBookingForPayload);
+  const bmg_all_product_options = [...perBookingForPayload, ...perPaxForPayload];
   const customer = body?.customer || {};
   const tracking = body?.tracking || {};
   const session = body?.session || {};
@@ -211,8 +390,8 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     total_pax: totalPax,
     ticket_label: primary.productTypeName || "",
     customer_email: customer.email || "",
-    customer_first_name: customer.first_name || "",
-    customer_last_name: customer.last_name || "",
+    customer_first_name: customer.first_name || derivedFromBmg.firstName || "",
+    customer_last_name: customer.last_name || derivedFromBmg.lastName || "",
     customer_phone: customer.phone || "",
     customer_locale: customer.locale || "",
     customer_timezone: customer.timezone || "",
@@ -243,12 +422,12 @@ function createSchemaPayload({ items, priceMap, baseUrl, orderId, body }) {
     session_duration_seconds: asNumber(session.session_duration_seconds, 0),
     cancellation_policy: body?.cancellation_policy || "",
     is_non_refundable: Boolean(body?.is_non_refundable || false),
-    bmg_options_per_booking: Array.isArray(body?.bmg_options_per_booking)
-      ? body.bmg_options_per_booking
-      : groupedOptions.perBooking,
-    bmg_options_per_pax: Array.isArray(body?.bmg_options_per_pax)
-      ? body.bmg_options_per_pax
-      : groupedOptions.perPax,
+    bmg_options_per_booking: perBookingForPayload,
+    bmg_options_per_pax: perPaxForPayload,
+    /** Single list of every product option row (per-booking then per-pax) for fulfillment. */
+    bmg_all_product_options,
+    bmg_lead_traveler_display_name,
+    bmg_travelers,
     meeting_point: body?.meeting_point || "",
     support_email: body?.support_email || "",
     operator_name: body?.operator_name || "",
@@ -321,6 +500,7 @@ function normalizeItems(items) {
               name: entry?.name || "",
               required: Boolean(entry?.required),
               inputType: entry?.inputType || "text",
+              semanticType: entry?.semanticType || "",
               value: entry?.value ?? "",
               guestIndex:
                 Number.isFinite(Number(entry?.guestIndex)) ? Number(entry.guestIndex) : null,
