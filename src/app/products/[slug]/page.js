@@ -76,43 +76,16 @@ function formatCurrency(value, currencyCode = FALLBACK_CURRENCY) {
   }).format(Number(value));
 }
 
-function getRecommendedTicketPrice(basePrice, commercial) {
-  const recommendedRate = Number(commercial?.rates?.recommendedPrice);
-  if (Number.isFinite(recommendedRate) && recommendedRate > 0) {
+function toRawNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function getRecommendedTicketPrice(commercial) {
+  const recommendedRate = toRawNumberOrNull(commercial?.rates?.recommendedPrice);
+  if (recommendedRate !== null) {
     return recommendedRate;
-  }
-  const ticketTypes = Array.isArray(commercial?.ticketTypes) ? commercial.ticketTypes : [];
-  const adultRow = ticketTypes.find(
-    (ticketType) => String(ticketType?.type || "").toLowerCase() === "adult",
-  );
-  if (adultRow) {
-    const gateRate = Number(adultRow.gateRatePrice);
-    const markup = Number(adultRow.recommendedMarkup);
-    if (Number.isFinite(gateRate) && Number.isFinite(markup)) {
-      const sum = gateRate + markup;
-      if (sum > 0) return sum;
-    }
-  }
-  const ticketTypePrices = ticketTypes
-    .map((ticketType) => {
-      const gateRate = Number(ticketType?.gateRatePrice);
-      const markup = Number(ticketType?.recommendedMarkup);
-      if (!Number.isFinite(gateRate) || !Number.isFinite(markup)) return null;
-      return gateRate + markup;
-    })
-    .filter((value) => Number.isFinite(value));
-  // Prefer lowest positive resale per ticket type (child/free tiers can be 0+0 and would skew "from" price).
-  const positiveTicketPrices = ticketTypePrices.filter((value) => value > 0);
-  if (positiveTicketPrices.length > 0) {
-    return Math.min(...positiveTicketPrices);
-  }
-  const markup = Number(commercial?.recommendedMarkup);
-  if (Number.isFinite(basePrice) && Number.isFinite(markup)) {
-    const sum = Number(basePrice) + markup;
-    if (sum > 0) return sum;
-  }
-  if (Number.isFinite(basePrice) && Number(basePrice) > 0) {
-    return Number(basePrice);
   }
   return null;
 }
@@ -292,14 +265,12 @@ export default async function ProductPage({ params }) {
   const heroImage = heroImages[0] || "";
   const retailBadges = [productInfo.hasHotelPickup ? "Hotel Pickup Available" : ""].filter(Boolean);
   const startingRecommendedPrice = productTypes
-    .map((type) =>
-      getRecommendedTicketPrice(productInfo.basePrice, commercialByTypeUuid[type.uuid] || {}),
-    )
-    .filter((value) => Number.isFinite(value) && value > 0);
+    .map((type) => getRecommendedTicketPrice(commercialByTypeUuid[type.uuid] || {}))
+    .filter((value) => Number.isFinite(value));
   const displayStartingPrice =
     startingRecommendedPrice.length > 0
       ? Math.min(...startingRecommendedPrice)
-      : getRecommendedTicketPrice(productInfo.basePrice, {});
+      : null;
 
   return (
     <main className={styles.page}>
@@ -463,7 +434,7 @@ export default async function ProductPage({ params }) {
                     requiredPerBooking: [],
                     requiredPerPax: [],
                   };
-                  const ticketPrice = getRecommendedTicketPrice(productInfo.basePrice, commercial);
+                  const ticketPrice = getRecommendedTicketPrice(commercial);
                   const rateRows = [
                     {
                       key: "recommended",
@@ -486,6 +457,18 @@ export default async function ProductPage({ params }) {
                       value: commercial?.rates?.nettPrice,
                     },
                   ];
+                  const ticketTypeRateRows = Array.isArray(commercial?.ticketTypes)
+                    ? commercial.ticketTypes.map((ticketType) => ({
+                        key: `${ticketType.type}-${ticketType.label || ""}`,
+                        label:
+                          ticketType.label ||
+                          String(ticketType.type || "ticket").replace(/\b\w/g, (char) =>
+                            char.toUpperCase(),
+                          ),
+                        gateRatePrice: ticketType.gateRatePrice,
+                        recommendedMarkup: ticketType.recommendedMarkup,
+                      }))
+                    : [];
                   const minimumRequirements = buildMinimumRequirementLabel(
                     paxConstraintsByTypeUuid[type.uuid] || null,
                     commercial,
@@ -498,19 +481,18 @@ export default async function ProductPage({ params }) {
                           <h3>{type.name}</h3>
                         </div>
                         <div className={styles.typePricing}>
-                          {Number.isFinite(ticketPrice) && ticketPrice > 0 && (
+                          {Number.isFinite(ticketPrice) ? (
                             <p className={styles.recommendedPrice}>
                               Recommended price: {formatCurrency(ticketPrice, displayCurrency)}
                             </p>
-                          )}
-                          {(!Number.isFinite(ticketPrice) || ticketPrice <= 0) && (
-                            <p>Price on request</p>
+                          ) : (
+                            <p className={styles.recommendedPrice}>Recommended price: Not provided</p>
                           )}
                           <ul className={styles.rateBreakdown}>
                             {rateRows.map((rate) => {
-                              const numberValue = Number(rate.value);
+                              const numberValue = toRawNumberOrNull(rate.value);
                               const displayValue =
-                                Number.isFinite(numberValue) && numberValue >= 0
+                                numberValue !== null
                                   ? formatCurrency(numberValue, displayCurrency)
                                   : "Not provided";
                               return (
@@ -521,6 +503,33 @@ export default async function ProductPage({ params }) {
                               );
                             })}
                           </ul>
+                          {ticketTypeRateRows.length > 0 ? (
+                            <section className={styles.ticketTypeRates}>
+                              <p className={styles.ticketTypeRatesTitle}>Ticket Type Raw Values</p>
+                              <ul className={styles.ticketTypeRateList}>
+                                {ticketTypeRateRows.map((row) => {
+                                  const gateRate = toRawNumberOrNull(row.gateRatePrice);
+                                  const markup = toRawNumberOrNull(row.recommendedMarkup);
+                                  return (
+                                    <li key={row.key}>
+                                      <span>{row.label}</span>
+                                      <small>
+                                        Gate:{" "}
+                                        {gateRate !== null
+                                          ? formatCurrency(gateRate, displayCurrency)
+                                          : "Not provided"}
+                                        {" · "}
+                                        Markup:{" "}
+                                        {markup !== null
+                                          ? formatCurrency(markup, displayCurrency)
+                                          : "Not provided"}
+                                      </small>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            </section>
+                          ) : null}
                         </div>
                       </div>
 

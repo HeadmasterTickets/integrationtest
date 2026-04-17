@@ -276,6 +276,44 @@
   font-weight: 600;
 }
 
+.ticketTypeRates {
+  margin-top: 8px;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 8px;
+}
+
+.ticketTypeRatesTitle {
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ticketTypeRateList {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.ticketTypeRateList li {
+  display: grid;
+  gap: 2px;
+}
+
+.ticketTypeRateList span {
+  color: #0f172a;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.ticketTypeRateList small {
+  color: #475569;
+  font-size: 0.72rem;
+}
+
 .variantMeta {
   margin-top: 10px;
   display: flex;

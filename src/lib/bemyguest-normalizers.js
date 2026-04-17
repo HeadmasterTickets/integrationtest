@@ -12,6 +12,12 @@ function toNumberOrNull(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function toRawNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
 function toBoolean(value, fallback = false) {
   if (typeof value === "boolean") return value;
   if (value === null || value === undefined) return fallback;
@@ -35,39 +41,12 @@ function formatDuration(hours, minutes) {
   return `${m}m`;
 }
 
-function firstFiniteNumber(values, allowZero = true) {
+function firstFiniteNumber(values) {
   for (const value of values) {
-    const numberValue = toNumberOrNull(value);
-    if (numberValue === null) continue;
-    if (allowZero || numberValue > 0) return numberValue;
+    const numberValue = toRawNumberOrNull(value);
+    if (numberValue !== null) return numberValue;
   }
   return null;
-}
-
-function minimumFinite(values, allowZero = true) {
-  const finite = values
-    .map((value) => toNumberOrNull(value))
-    .filter((value) => value !== null && (allowZero || value > 0));
-  if (finite.length === 0) return null;
-  return Math.min(...finite);
-}
-
-/**
- * B2C selling price for the adult tier (gate + partner markup). Matches typical portal "default" price.
- */
-function adultSellingPriceFromTicketTypes(ticketTypes) {
-  if (!Array.isArray(ticketTypes)) return null;
-  const adult = ticketTypes.find(
-    (ticketType) =>
-      ticketType?.allowed &&
-      String(ticketType?.type || "").toLowerCase() === "adult",
-  );
-  if (!adult) return null;
-  const gateRate = toNumberOrNull(adult.gateRatePrice);
-  const markup = toNumberOrNull(adult.recommendedMarkup);
-  if (gateRate === null || markup === null) return null;
-  const sum = gateRate + markup;
-  return sum > 0 ? sum : null;
 }
 
 function normalizeLocationList(payload) {
@@ -324,53 +303,22 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     .map((ticketType) => toNumberOrNull(ticketType?.recommendedMarkup))
     .find((value) => value !== null);
   const displayMarkup = recommendedMarkup ?? topTicketMarkup;
-  const minTicketGateRate = minimumFinite(ticketTypes.map((ticketType) => ticketType?.gateRatePrice));
-  const adultTicketSellingPrice = adultSellingPriceFromTicketTypes(ticketTypes);
-  const minTicketRecommendedPrice = minimumFinite(
-    ticketTypes.map((ticketType) => {
-      const gateRate = toNumberOrNull(ticketType?.gateRatePrice);
-      const markup = toNumberOrNull(ticketType?.recommendedMarkup);
-      if (gateRate === null || markup === null) return null;
-      const sum = gateRate + markup;
-      return sum > 0 ? sum : null;
-    }),
-    false,
-  );
   const retailPrice = firstFiniteNumber([
     data?.retailPrice,
     data?.retailprice,
-    data?.gateRatePrice,
-    data?.adultGateRatePrice,
-    minTicketGateRate,
   ]);
   const nettPrice = firstFiniteNumber([
     data?.nettPrice,
     data?.nettprice,
-    data?.b2bPrice,
-    data?.costPrice,
   ]);
   const parityPrice = firstFiniteNumber([
     data?.parityPrice,
     data?.parityprice,
-    data?.mspPrice,
-    data?.minimumSellingPrice,
-    data?.minSellingPrice,
   ]);
-  const recommendedPrice = firstFiniteNumber(
-    [
-      data?.recommendedPrice,
-      data?.recommendedprice,
-      adultTicketSellingPrice,
-      minTicketRecommendedPrice,
-      retailPrice !== null && displayMarkup !== null ? retailPrice + displayMarkup : null,
-      data?.basePrice !== undefined && displayMarkup !== null
-        ? (toNumberOrNull(data?.basePrice) ?? 0) + displayMarkup
-        : null,
-      parityPrice,
-      retailPrice,
-    ],
-    false,
-  );
+  const recommendedPrice = firstFiniteNumber([
+    data?.recommendedPrice,
+    data?.recommendedprice,
+  ]);
 
   const durationLabel = formatDuration(data?.durationHours, data?.durationMinutes);
 
@@ -418,8 +366,8 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
       max: toNumberOrNull(ticketType?.max),
       minAge: toNumberOrNull(ticketType?.minAge),
       maxAge: toNumberOrNull(ticketType?.maxAge),
-      recommendedMarkup: toNumberOrNull(ticketType?.recommendedMarkup),
-      gateRatePrice: toNumberOrNull(ticketType?.gateRatePrice),
+      recommendedMarkup: toRawNumberOrNull(ticketType?.recommendedMarkup),
+      gateRatePrice: toRawNumberOrNull(ticketType?.gateRatePrice),
     })),
   };
 }
