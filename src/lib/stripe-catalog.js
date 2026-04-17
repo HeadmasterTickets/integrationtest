@@ -3,15 +3,14 @@ import { INTEGRATION_PRODUCTS } from "@/lib/integration-products";
 // Fill these Stripe Price IDs after you create products/prices in Stripe.
 // Key format: `${productUuid}:${productTypeUuid}`
 export const STRIPE_PRICE_MAP = {
-  "ec1897a3-86fb-525c-914b-bfe39a4d5396:5f775003-4111-565d-a3d2-568e7ec57506":
-    "price_1TLim0Bq3JaiOlPJlcgQF0vR",
-  "22eef52f-70a7-4140-9160-2dd0dff4d638:16359b5d-575d-46e8-947c-5941a0fef58a":
-    "price_1TLioWBq3JaiOlPJd9d5VryX",
-  // Same Stripe price for both dinner cruise product-types under one product.
-  "22eef52f-70a7-4140-9160-2dd0dff4d638:a9be7df9-5d16-4df5-bf78-7d2275d5aa9a":
-    "price_1TLioWBq3JaiOlPJd9d5VryX",
-  "49d32aab-f0f1-4ee7-8c50-52ab64ac29de:20cbc3d0-cad6-4e27-869f-7375c8564255":
-    "price_1TLiq6Bq3JaiOlPJhs7Y0vZt",
+  "52d1b30f-9314-432a-9ec8-406b525a4f5c:28d87a08-6101-40f4-907e-856ca0d01b1d":
+    "price_1TN9ZnBq3JaiOlPJ1ayNtodA",
+  "dd15d4fc-4ca2-4ff9-a663-0c45a7de47a9:59f32f47-8828-4a02-8d09-820aef43f5a5":
+    "price_1TN9ZoBq3JaiOlPJNtyyuyRQ",
+  "4f688295-af91-49f3-be97-23f8d38c10b3:14985a27-b9da-4931-8db5-0b48bd5311c0":
+    "price_1TN9ZoBq3JaiOlPJNF24RLK0",
+  "03919a2b-eb6f-4462-8744-ccbf50cd3c86:f636339b-b960-47e1-93b6-9da016f95db0":
+    "price_1TN9ZpBq3JaiOlPJ5rza4BXI",
 };
 
 export function getStripePriceId(productUuid, productTypeUuid) {
