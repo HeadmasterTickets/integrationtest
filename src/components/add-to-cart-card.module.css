@@ -1,5 +1,5 @@
 .wrap {
-  margin-top: 14px;
+  margin-top: 16px;
   /* Force light form controls: global dark mode sets html { color-scheme: dark }, which makes
      native inputs/selects dark while local color rules still expect dark text — unreadable. */
   color-scheme: light;
@@ -80,6 +80,45 @@
   color: #334155;
 }
 
+.rateSection {
+  margin-top: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.rateTitle {
+  font-size: 0.82rem;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.rateList {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.rateList li {
+  display: grid;
+  gap: 2px;
+}
+
+.rateList span {
+  font-size: 0.8rem;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.rateList small {
+  font-size: 0.74rem;
+  color: #475569;
+  line-height: 1.35;
+}
+
 .unavailableText {
   margin-bottom: 10px;
   color: #b45309;
@@ -90,13 +129,17 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  border: 1px solid #dbe4f4;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 10px;
 }
 
 .field span {
@@ -141,7 +184,7 @@
 }
 
 .manageOptionsButton {
-  margin-top: 10px;
+  margin-top: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -178,7 +221,7 @@
 }
 
 .button {
-  margin-top: 12px;
+  margin-top: 14px;
   border: 1px solid #1e40af;
   border-radius: 10px;
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
@@ -213,7 +256,7 @@
   border: 1px solid #bfdbfe;
   background: #fff;
   box-shadow: 0 24px 60px rgba(2, 6, 23, 0.3);
-  padding: 18px;
+  padding: 20px;
   color-scheme: light;
   color: #0f172a;
 }
@@ -226,7 +269,7 @@
   border: 1px solid #bfdbfe;
   background: #ffffff;
   box-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
-  padding: 18px;
+  padding: 20px;
   color-scheme: light;
   color: #0f172a;
 }
@@ -236,6 +279,8 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .modalTitleRow {
@@ -299,7 +344,9 @@
 }
 
 .optionSection {
-  margin-top: 14px;
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px dashed #dbe4f4;
 }
 
 .optionSection h4 {
@@ -402,7 +449,7 @@
 .timeslotList {
   margin-top: 12px;
   display: grid;
-  gap: 8px;
+  gap: 9px;
 }
 
 .timeslotButton {
@@ -429,11 +476,12 @@
 }
 
 .ticketMix {
-  margin-top: 12px;
+  margin-top: 14px;
   border: 1px solid #bfdbfe;
   border-radius: 12px;
   background: #ffffff;
   padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .ticketMixTitle {

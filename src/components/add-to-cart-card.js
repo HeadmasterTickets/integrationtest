@@ -61,6 +61,39 @@ function toOptionHint(option) {
   return bits.join(" · ");
 }
 
+function toRawNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function formatCurrency(value, currencyCode = "SGD") {
+  if (!Number.isFinite(Number(value))) return "Not provided";
+  return new Intl.NumberFormat("en-SG", {
+    style: "currency",
+    currency: currencyCode || "SGD",
+    maximumFractionDigits: 2,
+  }).format(Number(value));
+}
+
+function collectSnapshotCategories(snapshot) {
+  const categories = new Set();
+  const rateTypes = ["recommendedPrice", "retailPrice", "nettPrice", "parityPrice"];
+  for (const rateType of rateTypes) {
+    const perCategory = snapshot?.rates?.[rateType] || {};
+    Object.keys(perCategory).forEach((category) => categories.add(category));
+  }
+  return Array.from(categories.values()).sort();
+}
+
+function getRateAmount(snapshot, rateType, category = "adult") {
+  return toRawNumberOrNull(snapshot?.rates?.[rateType]?.[category]?.amount);
+}
+
+function toCategoryLabel(category) {
+  return String(category || "unknown").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
 export default function AddToCartCard({
   productUuid,
   productName,
@@ -131,6 +164,8 @@ export default function AddToCartCard({
   const [showDatePopup, setShowDatePopup] = useState(false);
   const [showTimeslotPopup, setShowTimeslotPopup] = useState(false);
   const [optionError, setOptionError] = useState("");
+  const rateRows = Array.isArray(pricingContext?.rateRows) ? pricingContext.rateRows : [];
+  const defaultRateSnapshot = pricingContext?.defaultRateSnapshot || null;
 
   const perBookingOptions = useMemo(
     () => (Array.isArray(optionDefinitions?.perBooking) ? optionDefinitions.perBooking : []),
@@ -176,6 +211,32 @@ export default function AddToCartCard({
       null
     );
   }, [selectedAvailabilityDay, timeslotUuid]);
+
+  const selectedRateSnapshot = useMemo(() => {
+    if (selectedAvailabilityDay?.date) {
+      const day = rateRows.find((entry) => entry?.date === selectedAvailabilityDay.date);
+      if (selectedTimeslot?.uuid) {
+        const slot = day?.timeslotSnapshots?.find(
+          (entry) => entry?.timeslotUuid === selectedTimeslot.uuid,
+        );
+        if (slot) return slot;
+      }
+      if (day?.daySnapshot) return day.daySnapshot;
+    }
+    return defaultRateSnapshot;
+  }, [defaultRateSnapshot, rateRows, selectedAvailabilityDay, selectedTimeslot]);
+
+  const selectedRateRows = useMemo(() => {
+    const categories = collectSnapshotCategories(selectedRateSnapshot);
+    return categories.map((category) => ({
+      key: category,
+      label: toCategoryLabel(category),
+      recommendedPrice: getRateAmount(selectedRateSnapshot, "recommendedPrice", category),
+      retailPrice: getRateAmount(selectedRateSnapshot, "retailPrice", category),
+      nettPrice: getRateAmount(selectedRateSnapshot, "nettPrice", category),
+      parityPrice: getRateAmount(selectedRateSnapshot, "parityPrice", category),
+    }));
+  }, [selectedRateSnapshot]);
 
   const selectedDateLabel = useMemo(
     () =>
@@ -677,6 +738,39 @@ export default function AddToCartCard({
       </div>
       {hasAvailability ? (
         <p className={styles.nearestText}>Nearest availability: {firstAvailableDate || "N/A"}</p>
+      ) : null}
+      {selectedRateRows.length > 0 ? (
+        <section className={styles.rateSection}>
+          <p className={styles.rateTitle}>Rates for selected date/timeslot</p>
+          <ul className={styles.rateList}>
+            {selectedRateRows.map((row) => (
+              <li key={row.key}>
+                <span>{row.label}</span>
+                <small>
+                  Recommended:{" "}
+                  {row.recommendedPrice !== null
+                    ? formatCurrency(row.recommendedPrice, pricingContext?.currencyCode)
+                    : "Not provided"}
+                  {" · "}
+                  Retail:{" "}
+                  {row.retailPrice !== null
+                    ? formatCurrency(row.retailPrice, pricingContext?.currencyCode)
+                    : "Not provided"}
+                  {" · "}
+                  Nett:{" "}
+                  {row.nettPrice !== null
+                    ? formatCurrency(row.nettPrice, pricingContext?.currencyCode)
+                    : "Not provided"}
+                  {" · "}
+                  Parity:{" "}
+                  {row.parityPrice !== null
+                    ? formatCurrency(row.parityPrice, pricingContext?.currencyCode)
+                    : "Not provided"}
+                </small>
+              </li>
+            ))}
+          </ul>
+        </section>
       ) : null}
       {requiredOptions.length > 0 && (
         <button
