@@ -82,6 +82,14 @@ function toRawNumberOrNull(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function formatRawBmgScalar(value, currencyCode) {
+  if (value === null || value === undefined || value === "") return "Not provided";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  const asNumber = toRawNumberOrNull(value);
+  if (asNumber !== null) return formatCurrency(asNumber, currencyCode);
+  return String(value);
+}
+
 function getRecommendedTicketPrice(commercial) {
   const recommendedRate = toRawNumberOrNull(commercial?.rates?.recommendedPrice);
   if (recommendedRate !== null) {
@@ -457,6 +465,9 @@ export default async function ProductPage({ params }) {
                       value: commercial?.rates?.nettPrice,
                     },
                   ];
+                  const rawProductTypePriceFields = Array.isArray(commercial?.rawProductTypePriceFields)
+                    ? commercial.rawProductTypePriceFields
+                    : [];
                   const ticketTypeRateRows = Array.isArray(commercial?.ticketTypes)
                     ? commercial.ticketTypes.map((ticketType) => ({
                         key: `${ticketType.type}-${ticketType.label || ""}`,
@@ -503,6 +514,23 @@ export default async function ProductPage({ params }) {
                               );
                             })}
                           </ul>
+                          {rawProductTypePriceFields.length > 0 ? (
+                            <section className={styles.rawBmgPriceFields}>
+                              <p className={styles.rawBmgPriceFieldsTitle}>
+                                BMG product-type fields (raw from API)
+                              </p>
+                              <ul className={styles.rawBmgPriceFieldList}>
+                                {rawProductTypePriceFields.map((field) => (
+                                  <li key={field.key}>
+                                    <code className={styles.rawBmgKey}>{field.key}</code>
+                                    <span className={styles.rawBmgValue}>
+                                      {formatRawBmgScalar(field.value, displayCurrency)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </section>
+                          ) : null}
                           {ticketTypeRateRows.length > 0 ? (
                             <section className={styles.ticketTypeRates}>
                               <p className={styles.ticketTypeRatesTitle}>Ticket Type Raw Values</p>

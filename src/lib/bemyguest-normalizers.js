@@ -292,6 +292,36 @@ export function normalizeProductTypeOptions(productTypePayload) {
   };
 }
 
+/**
+ * Exact top-level price-related fields returned by BMG for a product-type (shape varies by environment).
+ * Used so the UI can show real values when canonical partner fields (retailPrice, etc.) are absent.
+ */
+function pickRawProductTypePriceFields(data) {
+  if (!data || typeof data !== "object") return [];
+  const keys = [
+    "recommendedPrice",
+    "retailPrice",
+    "nettPrice",
+    "parityPrice",
+    "recommendedprice",
+    "retailprice",
+    "nettprice",
+    "parityprice",
+    "adultGateRatePrice",
+    "childGateRatePrice",
+    "seniorGateRatePrice",
+    "recommendedMarkup",
+    "childRecommendedMarkup",
+    "seniorRecommendedMarkup",
+    "adultParityPrice",
+    "childParityPrice",
+    "seniorParityPrice",
+  ];
+  return keys
+    .filter((key) => Object.prototype.hasOwnProperty.call(data, key))
+    .map((key) => ({ key, value: data[key] }));
+}
+
 export function normalizeProductTypeCommercialDetails(productTypePayload) {
   const data = productTypePayload?.data || {};
   const ticketTypes = Array.isArray(data?.ticketTypes)
@@ -354,6 +384,7 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
       parityPrice,
       recommendedPrice,
     },
+    rawProductTypePriceFields: pickRawProductTypePriceFields(data),
     childRecommendedMarkup: toNumberOrNull(data?.childRecommendedMarkup),
     seniorRecommendedMarkup: toNumberOrNull(data?.seniorRecommendedMarkup),
     adultGateRatePrice: toNumberOrNull(data?.adultGateRatePrice),
