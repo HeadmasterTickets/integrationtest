@@ -76,6 +76,10 @@ function formatCurrency(value, currencyCode = DISPLAY_CURRENCY) {
 }
 
 function getRecommendedTicketPrice(basePrice, commercial) {
+  const recommendedRate = Number(commercial?.rates?.recommendedPrice);
+  if (Number.isFinite(recommendedRate) && recommendedRate > 0) {
+    return recommendedRate;
+  }
   const ticketTypePrices = Array.isArray(commercial?.ticketTypes)
     ? commercial.ticketTypes
         .map((ticketType) => {
@@ -269,7 +273,8 @@ export default async function ProductPage({ params }) {
 
   const productInfo = normalizeProductConsumerDetails(productPayload);
   const factRows = buildFactRows(productInfo);
-  const heroImage = productInfo.images[0] || "";
+  const heroImages = Array.isArray(productInfo.images) ? productInfo.images : [];
+  const heroImage = heroImages[0] || "";
   const retailBadges = [productInfo.hasHotelPickup ? "Hotel Pickup Available" : ""].filter(Boolean);
   const startingRecommendedPrice = productTypes
     .map((type) =>
@@ -312,7 +317,25 @@ export default async function ProductPage({ params }) {
           </article>
           <article className={styles.summaryPanel}>
             {heroImage ? (
-              <img src={heroImage} alt={productName || productLabel} className={styles.heroImage} />
+              <div className={styles.heroGallery}>
+                <img
+                  src={heroImage}
+                  alt={productName || productLabel}
+                  className={styles.heroImage}
+                />
+                {heroImages.length > 1 ? (
+                  <div className={styles.heroThumbGrid}>
+                    {heroImages.map((imageUrl, imageIndex) => (
+                      <img
+                        key={`${imageUrl}-${imageIndex}`}
+                        src={imageUrl}
+                        alt={`${productName || productLabel} visual ${imageIndex + 1}`}
+                        className={styles.heroThumb}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             <div className={styles.summaryText}>
               <p>{productInfo.shortDescription || "Description unavailable."}</p>
@@ -424,6 +447,28 @@ export default async function ProductPage({ params }) {
                     requiredPerPax: [],
                   };
                   const ticketPrice = getRecommendedTicketPrice(productInfo.basePrice, commercial);
+                  const rateRows = [
+                    {
+                      key: "recommended",
+                      label: "Recommended",
+                      value: commercial?.rates?.recommendedPrice,
+                    },
+                    {
+                      key: "parity",
+                      label: "MSP (Parity)",
+                      value: commercial?.rates?.parityPrice,
+                    },
+                    {
+                      key: "retail",
+                      label: "Retail (Gate)",
+                      value: commercial?.rates?.retailPrice,
+                    },
+                    {
+                      key: "nett",
+                      label: "Nett (B2B)",
+                      value: commercial?.rates?.nettPrice,
+                    },
+                  ];
                   const minimumRequirements = buildMinimumRequirementLabel(
                     paxConstraintsByTypeUuid[type.uuid] || null,
                     commercial,
@@ -438,12 +483,27 @@ export default async function ProductPage({ params }) {
                         <div className={styles.typePricing}>
                           {Number.isFinite(ticketPrice) && ticketPrice > 0 && (
                             <p className={styles.recommendedPrice}>
-                              Ticket price: {formatCurrency(ticketPrice, DISPLAY_CURRENCY)}
+                              Recommended price: {formatCurrency(ticketPrice, DISPLAY_CURRENCY)}
                             </p>
                           )}
                           {(!Number.isFinite(ticketPrice) || ticketPrice <= 0) && (
                             <p>Price on request</p>
                           )}
+                          <ul className={styles.rateBreakdown}>
+                            {rateRows.map((rate) => {
+                              const numberValue = Number(rate.value);
+                              const displayValue =
+                                Number.isFinite(numberValue) && numberValue >= 0
+                                  ? formatCurrency(numberValue, DISPLAY_CURRENCY)
+                                  : "Not provided";
+                              return (
+                                <li key={rate.key}>
+                                  <span>{rate.label}</span>
+                                  <strong>{displayValue}</strong>
+                                </li>
+                              );
+                            })}
+                          </ul>
                         </div>
                       </div>
 
@@ -465,6 +525,10 @@ export default async function ProductPage({ params }) {
                           <span>{minimumRequirements[0]}</span>
                         ) : null}
                       </div>
+
+                      {commercial.description ? (
+                        <p className={styles.typeDescription}>{commercial.description}</p>
+                      ) : null}
 
                       {availability.error ? (
                         <p className={styles.availabilityError}>{availability.error}</p>

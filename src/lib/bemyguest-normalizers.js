@@ -35,6 +35,23 @@ function formatDuration(hours, minutes) {
   return `${m}m`;
 }
 
+function firstFiniteNumber(values, allowZero = true) {
+  for (const value of values) {
+    const numberValue = toNumberOrNull(value);
+    if (numberValue === null) continue;
+    if (allowZero || numberValue > 0) return numberValue;
+  }
+  return null;
+}
+
+function minimumFinite(values, allowZero = true) {
+  const finite = values
+    .map((value) => toNumberOrNull(value))
+    .filter((value) => value !== null && (allowZero || value > 0));
+  if (finite.length === 0) return null;
+  return Math.min(...finite);
+}
+
 function normalizeLocationList(payload) {
   const locations = Array.isArray(payload?.data?.locations) ? payload.data.locations : [];
   return locations
@@ -289,6 +306,51 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     .map((ticketType) => toNumberOrNull(ticketType?.recommendedMarkup))
     .find((value) => value !== null);
   const displayMarkup = recommendedMarkup ?? topTicketMarkup;
+  const minTicketGateRate = minimumFinite(ticketTypes.map((ticketType) => ticketType?.gateRatePrice));
+  const minTicketRecommendedPrice = minimumFinite(
+    ticketTypes.map((ticketType) => {
+      const gateRate = toNumberOrNull(ticketType?.gateRatePrice);
+      const markup = toNumberOrNull(ticketType?.recommendedMarkup);
+      if (gateRate === null || markup === null) return null;
+      const sum = gateRate + markup;
+      return sum > 0 ? sum : null;
+    }),
+    false,
+  );
+  const retailPrice = firstFiniteNumber([
+    data?.retailPrice,
+    data?.retailprice,
+    data?.gateRatePrice,
+    data?.adultGateRatePrice,
+    minTicketGateRate,
+  ]);
+  const nettPrice = firstFiniteNumber([
+    data?.nettPrice,
+    data?.nettprice,
+    data?.b2bPrice,
+    data?.costPrice,
+  ]);
+  const parityPrice = firstFiniteNumber([
+    data?.parityPrice,
+    data?.parityprice,
+    data?.mspPrice,
+    data?.minimumSellingPrice,
+    data?.minSellingPrice,
+  ]);
+  const recommendedPrice = firstFiniteNumber(
+    [
+      data?.recommendedPrice,
+      data?.recommendedprice,
+      minTicketRecommendedPrice,
+      retailPrice !== null && displayMarkup !== null ? retailPrice + displayMarkup : null,
+      data?.basePrice !== undefined && displayMarkup !== null
+        ? (toNumberOrNull(data?.basePrice) ?? 0) + displayMarkup
+        : null,
+      parityPrice,
+      retailPrice,
+    ],
+    false,
+  );
 
   const durationLabel = formatDuration(data?.durationHours, data?.durationMinutes);
 
@@ -318,6 +380,12 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     daysInAdvance: toNumberOrNull(data?.daysInAdvance),
     cutOffTime: data?.cutOffTime || "",
     recommendedMarkup: displayMarkup,
+    rates: {
+      retailPrice,
+      nettPrice,
+      parityPrice,
+      recommendedPrice,
+    },
     childRecommendedMarkup: toNumberOrNull(data?.childRecommendedMarkup),
     seniorRecommendedMarkup: toNumberOrNull(data?.seniorRecommendedMarkup),
     adultGateRatePrice: toNumberOrNull(data?.adultGateRatePrice),
