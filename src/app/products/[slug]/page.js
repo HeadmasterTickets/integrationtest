@@ -9,6 +9,7 @@ import {
 } from "@/lib/bemyguest";
 import {
   normalizeAvailabilityCalendar,
+  normalizePriceListRateSnapshots,
   normalizeProductConsumerDetails,
   normalizeProductTypeCommercialDetails,
   normalizeProductTypeOptions,
@@ -21,6 +22,7 @@ import styles from "./product.module.css";
 
 /** Fallback only; prefer `productInfo.currencyCode` from BeMyGuest (usually SGD). */
 const FALLBACK_CURRENCY = "SGD";
+const RATE_TYPES = ["recommendedPrice", "retailPrice", "nettPrice", "parityPrice"];
 
 function addDays(dateString, days) {
   const date = new Date(dateString);
@@ -82,20 +84,64 @@ function toRawNumberOrNull(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
-function formatRawBmgScalar(value, currencyCode) {
-  if (value === null || value === undefined || value === "") return "Not provided";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  const asNumber = toRawNumberOrNull(value);
-  if (asNumber !== null) return formatCurrency(asNumber, currencyCode);
-  return String(value);
+function mergeRateRows(rateRows) {
+  const byDate = new Map();
+  for (const row of rateRows || []) {
+    if (!row?.date) continue;
+    if (!byDate.has(row.date)) {
+      byDate.set(row.date, {
+        date: row.date,
+        weekday: row.weekday || "",
+        daySnapshot: row.daySnapshot || null,
+        timeslotSnapshots: Array.isArray(row.timeslotSnapshots) ? [...row.timeslotSnapshots] : [],
+      });
+      continue;
+    }
+    const existing = byDate.get(row.date);
+    const byTimeslot = new Map();
+    for (const slot of [
+      ...(existing.timeslotSnapshots || []),
+      ...(Array.isArray(row.timeslotSnapshots) ? row.timeslotSnapshots : []),
+    ]) {
+      if (!slot?.timeslotUuid) continue;
+      byTimeslot.set(slot.timeslotUuid, slot);
+    }
+    byDate.set(row.date, {
+      ...existing,
+      weekday: existing.weekday || row.weekday || "",
+      daySnapshot: existing.daySnapshot || row.daySnapshot || null,
+      timeslotSnapshots: Array.from(byTimeslot.values()),
+    });
+  }
+  return Array.from(byDate.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
-function getRecommendedTicketPrice(commercial) {
-  const recommendedRate = toRawNumberOrNull(commercial?.rates?.recommendedPrice);
-  if (recommendedRate !== null) {
-    return recommendedRate;
+function getDefaultSnapshotFromRateRows(rateRows) {
+  for (const row of rateRows || []) {
+    if (Array.isArray(row?.timeslotSnapshots) && row.timeslotSnapshots.length > 0) {
+      return row.timeslotSnapshots[0];
+    }
+    if (row?.daySnapshot) return row.daySnapshot;
   }
   return null;
+}
+
+function getSnapshotRateAmount(snapshot, rateType, category = "adult") {
+  const amount = snapshot?.rates?.[rateType]?.[category]?.amount;
+  return toRawNumberOrNull(amount);
+}
+
+function collectSnapshotCategories(snapshot) {
+  const categories = new Set();
+  for (const rateType of RATE_TYPES) {
+    const perCategory = snapshot?.rates?.[rateType] || {};
+    Object.keys(perCategory).forEach((category) => categories.add(category));
+  }
+  return Array.from(categories.values()).sort();
+}
+
+function toCategoryLabel(category) {
+  return String(category || "unknown").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function buildMinimumRequirementLabel(paxConstraints, commercial) {
@@ -233,15 +279,20 @@ export default async function ProductPage({ params }) {
               }
             }),
           );
+          const successfulPayloads = rangePayloads.filter(Boolean);
           const mergedDays = mergeAvailabilityDays(
-            rangePayloads
-              .filter(Boolean)
-              .flatMap((payload) => normalizeAvailabilityCalendar(payload)),
+            successfulPayloads.flatMap((payload) => normalizeAvailabilityCalendar(payload)),
           );
+          const mergedRateRows = mergeRateRows(
+            successfulPayloads.flatMap((payload) => normalizePriceListRateSnapshots(payload)),
+          );
+          const defaultRateSnapshot = getDefaultSnapshotFromRateRows(mergedRateRows);
           return [
             type.uuid,
             {
               days: mergedDays,
+              rateRows: mergedRateRows,
+              defaultRateSnapshot,
               error: "",
               dateStart: ranges[0].dateStart,
               dateEnd: ranges[ranges.length - 1].dateEnd,
@@ -252,6 +303,8 @@ export default async function ProductPage({ params }) {
             type.uuid,
             {
               days: [],
+              rateRows: [],
+              defaultRateSnapshot: null,
               error: error instanceof Error ? error.message : "Availability request failed.",
               dateStart: ranges[0].dateStart,
               dateEnd: ranges[ranges.length - 1].dateEnd,
@@ -273,7 +326,9 @@ export default async function ProductPage({ params }) {
   const heroImage = heroImages[0] || "";
   const retailBadges = [productInfo.hasHotelPickup ? "Hotel Pickup Available" : ""].filter(Boolean);
   const startingRecommendedPrice = productTypes
-    .map((type) => getRecommendedTicketPrice(commercialByTypeUuid[type.uuid] || {}))
+    .map((type) =>
+      getSnapshotRateAmount(availabilityByTypeUuid[type.uuid]?.defaultRateSnapshot, "recommendedPrice"),
+    )
     .filter((value) => Number.isFinite(value));
   const displayStartingPrice =
     startingRecommendedPrice.length > 0
@@ -442,44 +497,47 @@ export default async function ProductPage({ params }) {
                     requiredPerBooking: [],
                     requiredPerPax: [],
                   };
-                  const ticketPrice = getRecommendedTicketPrice(commercial);
+                  const defaultRateSnapshot = availability.defaultRateSnapshot || null;
+                  const ticketPrice = getSnapshotRateAmount(
+                    defaultRateSnapshot,
+                    "recommendedPrice",
+                    "adult",
+                  );
                   const rateRows = [
                     {
                       key: "recommended",
-                      label: "Recommended",
-                      value: commercial?.rates?.recommendedPrice,
+                      label: "Recommended (Adult)",
+                      value: getSnapshotRateAmount(defaultRateSnapshot, "recommendedPrice", "adult"),
                     },
                     {
                       key: "parity",
-                      label: "MSP (Parity)",
-                      value: commercial?.rates?.parityPrice,
+                      label: "MSP (Adult)",
+                      value: getSnapshotRateAmount(defaultRateSnapshot, "parityPrice", "adult"),
                     },
                     {
                       key: "retail",
-                      label: "Retail (Gate)",
-                      value: commercial?.rates?.retailPrice,
+                      label: "Retail (Adult)",
+                      value: getSnapshotRateAmount(defaultRateSnapshot, "retailPrice", "adult"),
                     },
                     {
                       key: "nett",
-                      label: "Nett (B2B)",
-                      value: commercial?.rates?.nettPrice,
+                      label: "Nett (Adult)",
+                      value: getSnapshotRateAmount(defaultRateSnapshot, "nettPrice", "adult"),
                     },
                   ];
-                  const rawProductTypePriceFields = Array.isArray(commercial?.rawProductTypePriceFields)
-                    ? commercial.rawProductTypePriceFields
-                    : [];
-                  const ticketTypeRateRows = Array.isArray(commercial?.ticketTypes)
-                    ? commercial.ticketTypes.map((ticketType) => ({
-                        key: `${ticketType.type}-${ticketType.label || ""}`,
-                        label:
-                          ticketType.label ||
-                          String(ticketType.type || "ticket").replace(/\b\w/g, (char) =>
-                            char.toUpperCase(),
-                          ),
-                        gateRatePrice: ticketType.gateRatePrice,
-                        recommendedMarkup: ticketType.recommendedMarkup,
-                      }))
-                    : [];
+                  const categories = collectSnapshotCategories(defaultRateSnapshot);
+                  const ticketTypeRateRows = categories.map((category) => ({
+                    key: category,
+                    label: toCategoryLabel(category),
+                    recommendedPrice: getSnapshotRateAmount(
+                      defaultRateSnapshot,
+                      "recommendedPrice",
+                      category,
+                    ),
+                    retailPrice: getSnapshotRateAmount(defaultRateSnapshot, "retailPrice", category),
+                    nettPrice: getSnapshotRateAmount(defaultRateSnapshot, "nettPrice", category),
+                    parityPrice: getSnapshotRateAmount(defaultRateSnapshot, "parityPrice", category),
+                  }));
                   const minimumRequirements = buildMinimumRequirementLabel(
                     paxConstraintsByTypeUuid[type.uuid] || null,
                     commercial,
@@ -514,42 +572,35 @@ export default async function ProductPage({ params }) {
                               );
                             })}
                           </ul>
-                          {rawProductTypePriceFields.length > 0 ? (
-                            <section className={styles.rawBmgPriceFields}>
-                              <p className={styles.rawBmgPriceFieldsTitle}>
-                                BMG product-type fields (raw from API)
-                              </p>
-                              <ul className={styles.rawBmgPriceFieldList}>
-                                {rawProductTypePriceFields.map((field) => (
-                                  <li key={field.key}>
-                                    <code className={styles.rawBmgKey}>{field.key}</code>
-                                    <span className={styles.rawBmgValue}>
-                                      {formatRawBmgScalar(field.value, displayCurrency)}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </section>
-                          ) : null}
                           {ticketTypeRateRows.length > 0 ? (
                             <section className={styles.ticketTypeRates}>
-                              <p className={styles.ticketTypeRatesTitle}>Ticket Type Raw Values</p>
+                              <p className={styles.ticketTypeRatesTitle}>
+                                Ticket Type Rates (from earliest `/price-lists` row)
+                              </p>
                               <ul className={styles.ticketTypeRateList}>
                                 {ticketTypeRateRows.map((row) => {
-                                  const gateRate = toRawNumberOrNull(row.gateRatePrice);
-                                  const markup = toRawNumberOrNull(row.recommendedMarkup);
                                   return (
                                     <li key={row.key}>
                                       <span>{row.label}</span>
                                       <small>
-                                        Gate:{" "}
-                                        {gateRate !== null
-                                          ? formatCurrency(gateRate, displayCurrency)
+                                        Retail:{" "}
+                                        {row.retailPrice !== null
+                                          ? formatCurrency(row.retailPrice, displayCurrency)
                                           : "Not provided"}
                                         {" · "}
-                                        Markup:{" "}
-                                        {markup !== null
-                                          ? formatCurrency(markup, displayCurrency)
+                                        Nett:{" "}
+                                        {row.nettPrice !== null
+                                          ? formatCurrency(row.nettPrice, displayCurrency)
+                                          : "Not provided"}
+                                        {" · "}
+                                        Recommended:{" "}
+                                        {row.recommendedPrice !== null
+                                          ? formatCurrency(row.recommendedPrice, displayCurrency)
+                                          : "Not provided"}
+                                        {" · "}
+                                        Parity:{" "}
+                                        {row.parityPrice !== null
+                                          ? formatCurrency(row.parityPrice, displayCurrency)
                                           : "Not provided"}
                                       </small>
                                     </li>
@@ -586,6 +637,25 @@ export default async function ProductPage({ params }) {
 
                       {availability.error ? (
                         <p className={styles.availabilityError}>{availability.error}</p>
+                      ) : null}
+
+                      {commercial.cancellationPolicySummary ||
+                      (Array.isArray(commercial.cancellationPolicyRules) &&
+                        commercial.cancellationPolicyRules.length > 0) ? (
+                        <section className={styles.meetingSection}>
+                          <h4>Cancellation Policy</h4>
+                          {commercial.cancellationPolicySummary ? (
+                            <p>{commercial.cancellationPolicySummary}</p>
+                          ) : null}
+                          {Array.isArray(commercial.cancellationPolicyRules) &&
+                          commercial.cancellationPolicyRules.length > 0 ? (
+                            <ul className={styles.requiredOptionList}>
+                              {commercial.cancellationPolicyRules.map((rule) => (
+                                <li key={rule}>{rule}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </section>
                       ) : null}
 
                       {commercial.meetingLocation || commercial.meetingAddress ? (
@@ -629,10 +699,8 @@ export default async function ProductPage({ params }) {
                           basePrice: productInfo.basePrice,
                           currencyCode: displayCurrency,
                           currencySymbol: productInfo.currencySymbol || displayCurrency,
-                          recommendedMarkup: commercial.recommendedMarkup,
-                          childRecommendedMarkup: commercial.childRecommendedMarkup,
-                          seniorRecommendedMarkup: commercial.seniorRecommendedMarkup,
-                          ticketTypes: commercial.ticketTypes,
+                          rateRows: availability.rateRows || [],
+                          defaultRateSnapshot: availability.defaultRateSnapshot || null,
                         }}
                         variantContext={commercial}
                       />

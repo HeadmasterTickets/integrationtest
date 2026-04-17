@@ -322,6 +322,39 @@ function pickRawProductTypePriceFields(data) {
     .map((key) => ({ key, value: data[key] }));
 }
 
+function normalizeCancellationPolicyRules(entries) {
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return "";
+      const days = toRawNumberOrNull(entry.numberOfDays);
+      const hours = toRawNumberOrNull(entry.numberOfHours);
+      const refund = toRawNumberOrNull(entry.refundPercentage);
+      const fee = toRawNumberOrNull(entry.cancellationFeePercentage);
+      const serviceFee = toRawNumberOrNull(entry.serviceFee);
+      const currency = entry.serviceFeeCurrency || "";
+
+      const threshold =
+        days !== null
+          ? `${days} day(s)`
+          : hours !== null
+            ? `${hours} hour(s)`
+            : "threshold";
+      const bits = [`Cancel at least ${threshold} before travel`];
+      if (refund !== null) bits.push(`${refund}% refund`);
+      if (fee !== null) bits.push(`${fee}% cancellation fee`);
+      if (serviceFee !== null) {
+        bits.push(
+          `service fee ${currency ? `${currency} ` : ""}${serviceFee}${
+            entry.serviceFeePerBooking ? " per booking" : ""
+          }`,
+        );
+      }
+      return bits.join(" · ");
+    })
+    .filter(Boolean);
+}
+
 export function normalizeProductTypeCommercialDetails(productTypePayload) {
   const data = productTypePayload?.data || {};
   const ticketTypes = Array.isArray(data?.ticketTypes)
@@ -366,6 +399,7 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     voucherRequiresPrinting: toBoolean(data?.voucherRequiresPrinting, false),
     isNonRefundable: toBoolean(data?.isNonRefundable, false),
     cancellationPolicySummary: data?.cancellationPolicySummary || "",
+    cancellationPolicyRules: normalizeCancellationPolicyRules(data?.cancellationPolicies),
     meetingLocation:
       pickText(data?.meetingLocationTranslated || data?.meetingLocation) || "",
     meetingAddress:
@@ -483,6 +517,93 @@ export function normalizeAvailabilityCalendar(payload) {
         availableQuantity: dayAvailableQuantity,
         categoryAvailability: dayCategoryAvailability,
         timeslots,
+      };
+    })
+    .filter((row) => Boolean(row.date));
+}
+
+function normalizePriceListRateEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const type = String(entry.type || "").trim();
+  const category = String(entry.category || "").toLowerCase().trim();
+  if (!type || !category) return null;
+  const amount = toRawNumberOrNull(entry.amount);
+  return {
+    type,
+    category,
+    amount,
+    currency: entry.currency || "",
+    format: entry.format || "",
+    meta: entry.meta ?? null,
+  };
+}
+
+function buildRateSnapshotFromPrice(price) {
+  const rows = Array.isArray(price?.rates) ? price.rates : [];
+  const rates = {};
+  let currencyCode = "";
+  for (const row of rows) {
+    const normalized = normalizePriceListRateEntry(row);
+    if (!normalized) continue;
+    if (!rates[normalized.type]) rates[normalized.type] = {};
+    rates[normalized.type][normalized.category] = {
+      amount: normalized.amount,
+      currency: normalized.currency,
+      format: normalized.format,
+      meta: normalized.meta,
+    };
+    if (!currencyCode && normalized.currency) {
+      currencyCode = normalized.currency;
+    }
+  }
+  return {
+    priceId: price?.id || "",
+    currencyCode,
+    rates,
+  };
+}
+
+/**
+ * Normalize /price-lists payload into date + timeslot snapshots with exact rates[] values.
+ * @param {object} payload
+ * @returns {Array<{date: string, weekday: string, daySnapshot: {priceId: string, currencyCode: string, rates: Record<string, Record<string, {amount: number|null, currency: string, format: string, meta: unknown}>>}|null, timeslotSnapshots: Array<{timeslotUuid: string, startTime: string, endTime: string, priceId: string, currencyCode: string, rates: Record<string, Record<string, {amount: number|null, currency: string, format: string, meta: unknown}>>}>}>}
+ */
+export function normalizePriceListRateSnapshots(payload) {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  return rows
+    .map((row) => {
+      const prices = Array.isArray(row?.prices) ? row.prices : [];
+      const byPriceId = new Map();
+      for (const price of prices) {
+        const snapshot = buildRateSnapshotFromPrice(price);
+        if (!snapshot.priceId) continue;
+        byPriceId.set(snapshot.priceId, snapshot);
+      }
+
+      const firstPrice = prices[0] || null;
+      const daySnapshot = firstPrice ? buildRateSnapshotFromPrice(firstPrice) : null;
+
+      const timeslotSnapshots = Array.isArray(row?.timeslots)
+        ? row.timeslots
+            .map((slot) => {
+              const priceId = slot?.priceId || "";
+              const snapshot = byPriceId.get(priceId);
+              if (!snapshot) return null;
+              return {
+                timeslotUuid: slot?.uuid || "",
+                startTime: slot?.startTime || "",
+                endTime: slot?.endTime || "",
+                ...snapshot,
+              };
+            })
+            .filter(Boolean)
+        : [];
+
+      return {
+        date: row?.date || "",
+        weekday: row?.weekday || "",
+        daySnapshot,
+        timeslotSnapshots,
       };
     })
     .filter((row) => Boolean(row.date));
