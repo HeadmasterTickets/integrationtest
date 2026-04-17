@@ -322,17 +322,75 @@ function pickRawProductTypePriceFields(data) {
     .map((key) => ({ key, value: data[key] }));
 }
 
+function normalizeText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  return (pickText(value) || "").trim();
+}
+
+function firstNonEmptyText(values) {
+  for (const value of values) {
+    const normalized = normalizeText(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function normalizePolicyEntryList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "object") return [];
+  const arrays = [
+    value.entries,
+    value.rules,
+    value.policies,
+    value.cancellationPolicies,
+    value.cancellationPolicyRules,
+    value.data,
+    value.items,
+  ];
+  for (const candidate of arrays) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
 function normalizeCancellationPolicyRules(entries) {
   if (!Array.isArray(entries)) return [];
+  const seen = new Set();
   return entries
     .map((entry) => {
-      if (!entry || typeof entry !== "object") return "";
-      const days = toRawNumberOrNull(entry.numberOfDays);
-      const hours = toRawNumberOrNull(entry.numberOfHours);
-      const refund = toRawNumberOrNull(entry.refundPercentage);
-      const fee = toRawNumberOrNull(entry.cancellationFeePercentage);
-      const serviceFee = toRawNumberOrNull(entry.serviceFee);
-      const currency = entry.serviceFeeCurrency || "";
+      if (!entry) return "";
+      if (typeof entry === "string") return entry.trim();
+      if (typeof entry !== "object") return "";
+
+      const explicitRule = firstNonEmptyText([
+        entry.rule,
+        entry.rules,
+        entry.description,
+        entry.summary,
+        entry.label,
+        entry.text,
+        entry.policyText,
+      ]);
+      if (explicitRule) return explicitRule;
+
+      const days = firstFiniteNumber([entry.numberOfDays, entry.days, entry.day]);
+      const hours = firstFiniteNumber([entry.numberOfHours, entry.hours, entry.hour]);
+      const refund = firstFiniteNumber([
+        entry.refundPercentage,
+        entry.refundPercent,
+        entry.refund,
+      ]);
+      const fee = firstFiniteNumber([
+        entry.cancellationFeePercentage,
+        entry.cancellationFeePercent,
+        entry.cancellationFee,
+        entry.feePercentage,
+        entry.fee,
+      ]);
+      const serviceFee = firstFiniteNumber([entry.serviceFee, entry.service_fee]);
+      const currency = firstNonEmptyText([entry.serviceFeeCurrency, entry.currency]);
 
       const threshold =
         days !== null
@@ -352,7 +410,62 @@ function normalizeCancellationPolicyRules(entries) {
       }
       return bits.join(" · ");
     })
-    .filter(Boolean);
+    .map((rule) => rule.trim())
+    .filter((rule) => {
+      if (!rule || seen.has(rule)) return false;
+      seen.add(rule);
+      return true;
+    });
+}
+
+function resolveCancellationPolicySummary(data) {
+  const directSummary = firstNonEmptyText([
+    data?.cancellationPolicySummary,
+    data?.cancellationpolicySummary,
+    data?.cancellationSummary,
+    data?.cancellationPolicyDescription,
+    data?.cancellationPolicyText,
+    data?.cancellation_policy_summary,
+  ]);
+  if (directSummary) return directSummary;
+
+  const policyContainers = [
+    data?.cancellationPolicy,
+    data?.cancellationpolicy,
+    data?.cancellationPolicies,
+    data?.cancellation_policy,
+  ].filter(Boolean);
+
+  for (const container of policyContainers) {
+    if (typeof container !== "object" || Array.isArray(container)) continue;
+    const nestedSummary = firstNonEmptyText([
+      container.summary,
+      container.description,
+      container.title,
+      container.text,
+      container.policyText,
+      container.cancellationPolicySummary,
+    ]);
+    if (nestedSummary) return nestedSummary;
+  }
+
+  return "";
+}
+
+function resolveCancellationPolicyRules(data) {
+  const rawCandidates = [
+    data?.cancellationPolicies,
+    data?.cancellationPolicyRules,
+    data?.cancellationPolicy,
+    data?.cancellationpolicy,
+    data?.cancellation_policy,
+    data?.cancellation_rules,
+  ];
+  const allEntries = rawCandidates.flatMap((candidate) => {
+    if (Array.isArray(candidate)) return candidate;
+    return normalizePolicyEntryList(candidate);
+  });
+  return normalizeCancellationPolicyRules(allEntries);
 }
 
 export function normalizeProductTypeCommercialDetails(productTypePayload) {
@@ -398,8 +511,8 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     directAdmission: toBoolean(data?.directAdmission, false),
     voucherRequiresPrinting: toBoolean(data?.voucherRequiresPrinting, false),
     isNonRefundable: toBoolean(data?.isNonRefundable, false),
-    cancellationPolicySummary: data?.cancellationPolicySummary || "",
-    cancellationPolicyRules: normalizeCancellationPolicyRules(data?.cancellationPolicies),
+    cancellationPolicySummary: resolveCancellationPolicySummary(data),
+    cancellationPolicyRules: resolveCancellationPolicyRules(data),
     meetingLocation:
       pickText(data?.meetingLocationTranslated || data?.meetingLocation) || "",
     meetingAddress:

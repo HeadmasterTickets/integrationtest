@@ -542,6 +542,18 @@ export default async function ProductPage({ params }) {
                     paxConstraintsByTypeUuid[type.uuid] || null,
                     commercial,
                   );
+                  const cancellationPolicySummary = String(
+                    commercial.cancellationPolicySummary || "",
+                  ).trim();
+                  const cancellationPolicyRules = Array.isArray(
+                    commercial.cancellationPolicyRules,
+                  )
+                    ? commercial.cancellationPolicyRules
+                        .map((rule) => String(rule || "").trim())
+                        .filter(Boolean)
+                    : [];
+                  const hasCancellationPolicy =
+                    Boolean(cancellationPolicySummary) || cancellationPolicyRules.length > 0;
 
                   return (
                     <article key={type.uuid} className={styles.typeCard}>
@@ -616,7 +628,7 @@ export default async function ProductPage({ params }) {
                         {commercial.durationLabel ? (
                           <span>Duration: {commercial.durationLabel}</span>
                         ) : null}
-                        {commercial.cancellationPolicySummary ? (
+                        {hasCancellationPolicy ? (
                           <span>Flexible cancellation</span>
                         ) : null}
                         {commercial.instantConfirmation ? (
@@ -639,18 +651,15 @@ export default async function ProductPage({ params }) {
                         <p className={styles.availabilityError}>{availability.error}</p>
                       ) : null}
 
-                      {commercial.cancellationPolicySummary ||
-                      (Array.isArray(commercial.cancellationPolicyRules) &&
-                        commercial.cancellationPolicyRules.length > 0) ? (
+                      {hasCancellationPolicy ? (
                         <section className={styles.meetingSection}>
                           <h4>Cancellation Policy</h4>
-                          {commercial.cancellationPolicySummary ? (
-                            <p>{commercial.cancellationPolicySummary}</p>
+                          {cancellationPolicySummary ? (
+                            <p>{cancellationPolicySummary}</p>
                           ) : null}
-                          {Array.isArray(commercial.cancellationPolicyRules) &&
-                          commercial.cancellationPolicyRules.length > 0 ? (
+                          {cancellationPolicyRules.length > 0 ? (
                             <ul className={styles.requiredOptionList}>
-                              {commercial.cancellationPolicyRules.map((rule) => (
+                              {cancellationPolicyRules.map((rule) => (
                                 <li key={rule}>{rule}</li>
                               ))}
                             </ul>
