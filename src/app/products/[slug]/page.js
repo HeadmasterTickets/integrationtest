@@ -19,7 +19,8 @@ import {
 import { getIntegrationProductBySlug } from "@/lib/integration-products";
 import styles from "./product.module.css";
 
-const DISPLAY_CURRENCY = "SDG";
+/** Fallback only; prefer `productInfo.currencyCode` from BeMyGuest (usually SGD). */
+const FALLBACK_CURRENCY = "SGD";
 
 function addDays(dateString, days) {
   const date = new Date(dateString);
@@ -66,11 +67,11 @@ function mergeAvailabilityDays(dayRows) {
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function formatCurrency(value, currencyCode = DISPLAY_CURRENCY) {
+function formatCurrency(value, currencyCode = FALLBACK_CURRENCY) {
   if (!Number.isFinite(Number(value))) return "";
   return new Intl.NumberFormat("en-SG", {
     style: "currency",
-    currency: currencyCode || DISPLAY_CURRENCY,
+    currency: currencyCode || FALLBACK_CURRENCY,
     maximumFractionDigits: 2,
   }).format(Number(value));
 }
@@ -80,16 +81,26 @@ function getRecommendedTicketPrice(basePrice, commercial) {
   if (Number.isFinite(recommendedRate) && recommendedRate > 0) {
     return recommendedRate;
   }
-  const ticketTypePrices = Array.isArray(commercial?.ticketTypes)
-    ? commercial.ticketTypes
-        .map((ticketType) => {
-          const gateRate = Number(ticketType?.gateRatePrice);
-          const markup = Number(ticketType?.recommendedMarkup);
-          if (!Number.isFinite(gateRate) || !Number.isFinite(markup)) return null;
-          return gateRate + markup;
-        })
-        .filter((value) => Number.isFinite(value))
-    : [];
+  const ticketTypes = Array.isArray(commercial?.ticketTypes) ? commercial.ticketTypes : [];
+  const adultRow = ticketTypes.find(
+    (ticketType) => String(ticketType?.type || "").toLowerCase() === "adult",
+  );
+  if (adultRow) {
+    const gateRate = Number(adultRow.gateRatePrice);
+    const markup = Number(adultRow.recommendedMarkup);
+    if (Number.isFinite(gateRate) && Number.isFinite(markup)) {
+      const sum = gateRate + markup;
+      if (sum > 0) return sum;
+    }
+  }
+  const ticketTypePrices = ticketTypes
+    .map((ticketType) => {
+      const gateRate = Number(ticketType?.gateRatePrice);
+      const markup = Number(ticketType?.recommendedMarkup);
+      if (!Number.isFinite(gateRate) || !Number.isFinite(markup)) return null;
+      return gateRate + markup;
+    })
+    .filter((value) => Number.isFinite(value));
   // Prefer lowest positive resale per ticket type (child/free tiers can be 0+0 and would skew "from" price).
   const positiveTicketPrices = ticketTypePrices.filter((value) => value > 0);
   if (positiveTicketPrices.length > 0) {
@@ -272,6 +283,10 @@ export default async function ProductPage({ params }) {
   }
 
   const productInfo = normalizeProductConsumerDetails(productPayload);
+  const displayCurrency =
+    typeof productInfo.currencyCode === "string" && /^[A-Za-z]{3}$/.test(productInfo.currencyCode)
+      ? productInfo.currencyCode.toUpperCase()
+      : FALLBACK_CURRENCY;
   const factRows = buildFactRows(productInfo);
   const heroImages = Array.isArray(productInfo.images) ? productInfo.images : [];
   const heroImage = heroImages[0] || "";
@@ -311,9 +326,11 @@ export default async function ProductPage({ params }) {
           <article className={styles.pricePanel}>
             <p className={styles.priceLabel}>Starting from</p>
             <p className={styles.priceValue}>
-              {formatCurrency(displayStartingPrice, DISPLAY_CURRENCY) || "Price on request"}
+              {formatCurrency(displayStartingPrice, displayCurrency) || "Price on request"}
             </p>
-            <p className={styles.priceHint}>All prices shown in SDG.</p>
+            <p className={styles.priceHint}>
+              All prices shown in {productInfo.currencySymbol || displayCurrency}.
+            </p>
           </article>
           <article className={styles.summaryPanel}>
             {heroImage ? (
@@ -483,7 +500,7 @@ export default async function ProductPage({ params }) {
                         <div className={styles.typePricing}>
                           {Number.isFinite(ticketPrice) && ticketPrice > 0 && (
                             <p className={styles.recommendedPrice}>
-                              Recommended price: {formatCurrency(ticketPrice, DISPLAY_CURRENCY)}
+                              Recommended price: {formatCurrency(ticketPrice, displayCurrency)}
                             </p>
                           )}
                           {(!Number.isFinite(ticketPrice) || ticketPrice <= 0) && (
@@ -494,7 +511,7 @@ export default async function ProductPage({ params }) {
                               const numberValue = Number(rate.value);
                               const displayValue =
                                 Number.isFinite(numberValue) && numberValue >= 0
-                                  ? formatCurrency(numberValue, DISPLAY_CURRENCY)
+                                  ? formatCurrency(numberValue, displayCurrency)
                                   : "Not provided";
                               return (
                                 <li key={rate.key}>
@@ -573,8 +590,8 @@ export default async function ProductPage({ params }) {
                         optionDefinitions={optionDefinitions}
                         pricingContext={{
                           basePrice: productInfo.basePrice,
-                          currencyCode: DISPLAY_CURRENCY,
-                          currencySymbol: DISPLAY_CURRENCY,
+                          currencyCode: displayCurrency,
+                          currencySymbol: productInfo.currencySymbol || displayCurrency,
                           recommendedMarkup: commercial.recommendedMarkup,
                           childRecommendedMarkup: commercial.childRecommendedMarkup,
                           seniorRecommendedMarkup: commercial.seniorRecommendedMarkup,

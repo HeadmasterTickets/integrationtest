@@ -52,6 +52,24 @@ function minimumFinite(values, allowZero = true) {
   return Math.min(...finite);
 }
 
+/**
+ * B2C selling price for the adult tier (gate + partner markup). Matches typical portal "default" price.
+ */
+function adultSellingPriceFromTicketTypes(ticketTypes) {
+  if (!Array.isArray(ticketTypes)) return null;
+  const adult = ticketTypes.find(
+    (ticketType) =>
+      ticketType?.allowed &&
+      String(ticketType?.type || "").toLowerCase() === "adult",
+  );
+  if (!adult) return null;
+  const gateRate = toNumberOrNull(adult.gateRatePrice);
+  const markup = toNumberOrNull(adult.recommendedMarkup);
+  if (gateRate === null || markup === null) return null;
+  const sum = gateRate + markup;
+  return sum > 0 ? sum : null;
+}
+
 function normalizeLocationList(payload) {
   const locations = Array.isArray(payload?.data?.locations) ? payload.data.locations : [];
   return locations
@@ -307,6 +325,7 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     .find((value) => value !== null);
   const displayMarkup = recommendedMarkup ?? topTicketMarkup;
   const minTicketGateRate = minimumFinite(ticketTypes.map((ticketType) => ticketType?.gateRatePrice));
+  const adultTicketSellingPrice = adultSellingPriceFromTicketTypes(ticketTypes);
   const minTicketRecommendedPrice = minimumFinite(
     ticketTypes.map((ticketType) => {
       const gateRate = toNumberOrNull(ticketType?.gateRatePrice);
@@ -341,6 +360,7 @@ export function normalizeProductTypeCommercialDetails(productTypePayload) {
     [
       data?.recommendedPrice,
       data?.recommendedprice,
+      adultTicketSellingPrice,
       minTicketRecommendedPrice,
       retailPrice !== null && displayMarkup !== null ? retailPrice + displayMarkup : null,
       data?.basePrice !== undefined && displayMarkup !== null
