@@ -212,8 +212,8 @@ export async function generateMetadata({ params }) {
     return { title: "Product | Integration Test" };
   }
   return {
-    title: `${product.id} | Integration Test`,
-    description: `Published ${product.id} view for BeMyGuest integration testing.`,
+    title: `${product.name} | Integration Test`,
+    description: `Published ${product.name} view for BeMyGuest integration testing.`,
   };
 }
 
@@ -224,7 +224,7 @@ export default async function ProductPage({ params }) {
     notFound();
   }
 
-  const { productUuid, id: productLabel } = product;
+  const { productUuid, name: productLabel } = product;
 
   let productPayload = null;
   let productTypesPayload = null;

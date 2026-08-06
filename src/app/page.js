@@ -61,7 +61,7 @@ export default async function Home() {
           {productCards.map((product) => (
             <article key={product.productUuid} className={styles.card}>
               <header className={styles.cardHeader}>
-                <span className={styles.productChip}>{product.id}</span>
+                <span className={styles.productChip}>{product.name}</span>
                 <h2>{product.dynamicName}</h2>
               </header>
 
@@ -106,8 +106,8 @@ export default async function Home() {
                 <span className={styles.variantCount}>
                   {product.variants.length} variants
                 </span>
-                {product.href ? (
-                  <Link href={product.href} className={styles.button}>
+                {product.slug ? (
+                  <Link href={`/products/${product.slug}`} className={styles.button}>
                     View Ticket
                   </Link>
                 ) : (

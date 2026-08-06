@@ -75,10 +75,17 @@ async function bmgFetchWithStatus(
   }
 
   if (!response.ok) {
-    const message =
-      payload?.message ||
-      payload?.error ||
-      `BeMyGuest request failed (${response.status})`;
+    const rawMessage = payload?.message ?? payload?.error;
+    let message;
+    if (typeof rawMessage === "string" && rawMessage.trim()) {
+      message = rawMessage;
+    } else if (rawMessage !== undefined && rawMessage !== null) {
+      // API returned a non-string body (e.g. a validation object); surface it
+      // as readable text plus status instead of collapsing to "[object Object]".
+      message = `${JSON.stringify(rawMessage)} (HTTP ${response.status})`;
+    } else {
+      message = `BeMyGuest request failed (${response.status})`;
+    }
     throw new Error(message);
   }
 
